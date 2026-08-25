@@ -1,0 +1,18 @@
+Ambiente: macOS (Darwin 25.5.0), Apple M5, Python 3.11, onnxruntime 1.19.2, scikit-learn 1.5.2
+Medido em: 2026-08-25 (make model + .venv/bin/python src/benchmark.py --n 500)
+
+=== Latencia do classificador por requisicao (1 amostra, 500 execucoes) ===
+Sklearn RandomForest, n_jobs=-1 :  13.5591 ms
+Sklearn RandomForest, n_jobs=1  :   1.3616 ms
+ONNX Runtime (otimizado)        :   0.0052 ms
+
+Melhoria vs n_jobs=-1 : 100.0%  (2588x mais rapido)
+Melhoria vs n_jobs=1  :  99.6%  (260x mais rapido)
+
+Notas:
+- O estagio de TF-IDF e identico nos dois casos e ficou de fora, para
+  isolar o ganho da otimizacao aplicada ao classificador.
+- n_jobs=-1 e a configuracao real do modelo treinado (src/train.py); em
+  inferencia unitaria ela e a pior das duas, porque o overhead de
+  despacho do joblib domina o tempo. n_jobs=1 e a baseline mais justa
+  para medir o ganho do ONNX Runtime em si.

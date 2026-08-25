@@ -3,6 +3,10 @@ Compara a latência de inferência do CLASSIFICADOR: sklearn (RandomForest)
 original versus o classificador convertido para ONNX Runtime.
 O estágio de TF-IDF é idêntico nos dois casos (não é o gargalo otimizado).
 
+O sklearn é medido em duas configurações (n_jobs=-1, como o modelo foi
+treinado, e n_jobs=1) porque em inferência unitária o overhead de despacho
+de threads do joblib domina o tempo e distorceria a comparação.
+
 Uso:
     python src/benchmark.py --n 300
 """
@@ -20,11 +24,11 @@ SAMPLE_TEXTS = [
 ]
 
 
-def bench_sklearn(pipeline, X, n_runs):
-    pipeline.named_steps["clf"].predict_proba(X[:1])  # warmup
+def bench_sklearn(clf, X, n_runs):
+    clf.predict_proba(X[:1])  # warmup
     start = time.perf_counter()
     for _ in range(n_runs):
-        pipeline.named_steps["clf"].predict_proba(X[:1])
+        clf.predict_proba(X[:1])
     elapsed = time.perf_counter() - start
     return (elapsed / n_runs) * 1000  # ms por requisição
 
@@ -51,19 +55,35 @@ def main():
     session = rt.InferenceSession(args.onnx, providers=["CPUExecutionProvider"])
 
     X = pipeline.named_steps["tfidf"].transform(SAMPLE_TEXTS).toarray()
+    clf = pipeline.named_steps["clf"]
 
-    sk_latency = bench_sklearn(pipeline, X, args.n)
+    # Duas baselines sklearn: como o modelo foi treinado (n_jobs=-1) e com o
+    # paralelismo desligado. Para uma unica amostra o joblib gasta mais tempo
+    # despachando threads do que percorrendo as arvores, entao comparar so com
+    # n_jobs=-1 superestimaria o ganho do ONNX.
+    clf.n_jobs = -1
+    sk_parallel = bench_sklearn(clf, X, args.n)
+    clf.n_jobs = 1
+    sk_serial = bench_sklearn(clf, X, args.n)
     onnx_latency = bench_onnx(session, X, args.n)
 
-    improvement = (1 - onnx_latency / sk_latency) * 100
-
-    print("=== Resultado do Benchmark de Latência do Classificador (por requisição) ===")
-    print(f"Sklearn RandomForest (original) : {sk_latency:.4f} ms")
-    print(f"ONNX Runtime (otimizado)         : {onnx_latency:.4f} ms")
-    print(f"Melhoria                          : {improvement:.1f}%")
+    print(f"=== Latencia do classificador por requisicao (1 amostra, {args.n} execucoes) ===")
+    print(f"Sklearn RandomForest, n_jobs=-1 : {sk_parallel:8.4f} ms")
+    print(f"Sklearn RandomForest, n_jobs=1  : {sk_serial:8.4f} ms")
+    print(f"ONNX Runtime (otimizado)        : {onnx_latency:8.4f} ms")
     print()
-    print("Obs: o estágio de TF-IDF (idêntico em ambos os casos) não está incluso,")
-    print("pois o objetivo é isolar o ganho da otimização aplicada ao classificador.")
+    print(f"Melhoria vs n_jobs=-1 : {(1 - onnx_latency / sk_parallel) * 100:5.1f}%"
+          f"  ({sk_parallel / onnx_latency:.0f}x mais rapido)")
+    print(f"Melhoria vs n_jobs=1  : {(1 - onnx_latency / sk_serial) * 100:5.1f}%"
+          f"  ({sk_serial / onnx_latency:.0f}x mais rapido)")
+    print()
+    print("Notas:")
+    print("- O estagio de TF-IDF e identico nos dois casos e ficou de fora, para")
+    print("  isolar o ganho da otimizacao aplicada ao classificador.")
+    print("- n_jobs=-1 e a configuracao real do modelo treinado (src/train.py); em")
+    print("  inferencia unitaria ela e a pior das duas, porque o overhead de")
+    print("  despacho do joblib domina o tempo. n_jobs=1 e a baseline mais justa")
+    print("  para medir o ganho do ONNX Runtime em si.")
 
 
 if __name__ == "__main__":
