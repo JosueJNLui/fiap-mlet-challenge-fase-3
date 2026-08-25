@@ -77,7 +77,7 @@ def main():
 
     out_path = Path(__file__).parent / "laudos.csv"
     with open(out_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")
         writer.writerow(["texto", "label"])
         writer.writerows(rows)
 
