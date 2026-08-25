@@ -37,7 +37,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements-api.txt scikit-learn pandas pytest httpx skl2onnx
+        run: pip install -r requirements-api.txt scikit-learn pandas pytest httpx skl2onnx==1.20.0 onnx==1.22.0
 
       - name: Gerar dataset sintético e treinar modelo (necessário para testes)
         run: |
@@ -62,7 +62,7 @@ jobs:
 
       - name: Instalar dependências e gerar modelo
         run: |
-          pip install -r requirements-api.txt scikit-learn pandas skl2onnx
+          pip install -r requirements-api.txt scikit-learn pandas skl2onnx==1.20.0 onnx==1.22.0
           python data/generate_data.py
           python src/train.py
           python src/export_onnx.py
