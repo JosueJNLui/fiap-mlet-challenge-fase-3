@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODEL_BACKEND=onnx
+      - MODEL_BACKEND=${MODEL_BACKEND:-onnx}
     restart: unless-stopped
     networks:
       - triagem-net

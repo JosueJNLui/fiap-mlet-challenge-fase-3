@@ -3,7 +3,7 @@
 PY ?= .venv/bin/python
 COMPOSE = docker compose -f docker/docker-compose.yml
 
-.PHONY: setup model lint test check up down clean
+.PHONY: setup model lint test check bench up down clean
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
 	uv venv --python 3.11 .venv
@@ -23,6 +23,10 @@ test:   ## pytest
 	$(PY) -m pytest tests/ -v
 
 check: lint test  ## o mesmo que o CI roda antes do build
+
+bench:  ## latencia do classificador (sklearn vs ONNX) e da API HTTP (precisa de `make up`)
+	$(PY) src/benchmark.py --n 500
+	$(PY) src/benchmark_http.py --n 200
 
 up:     ## sobe API + Prometheus + Grafana (8000 / 9090 / 3000)
 	$(COMPOSE) up -d --build
