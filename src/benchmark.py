@@ -48,7 +48,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="models/model.joblib")
     parser.add_argument("--onnx", default="models/model.onnx")
-    parser.add_argument("--n", type=int, default=300, help="numero de requisicoes simuladas")
+    parser.add_argument("--n", type=int, default=300, help="número de requisições simuladas")
     args = parser.parse_args()
 
     pipeline = joblib.load(args.model)
@@ -58,8 +58,8 @@ def main():
     clf = pipeline.named_steps["clf"]
 
     # Duas baselines sklearn: como o modelo foi treinado (n_jobs=-1) e com o
-    # paralelismo desligado. Para uma unica amostra o joblib gasta mais tempo
-    # despachando threads do que percorrendo as arvores, entao comparar so com
+    # paralelismo desligado. Para uma única amostra o joblib gasta mais tempo
+    # despachando threads do que percorrendo as árvores, então comparar só com
     # n_jobs=-1 superestimaria o ganho do ONNX.
     clf.n_jobs = -1
     sk_parallel = bench_sklearn(clf, X, args.n)
@@ -67,22 +67,22 @@ def main():
     sk_serial = bench_sklearn(clf, X, args.n)
     onnx_latency = bench_onnx(session, X, args.n)
 
-    print(f"=== Latencia do classificador por requisicao (1 amostra, {args.n} execucoes) ===")
+    print(f"=== Latência do classificador por requisição (1 amostra, {args.n} execuções) ===")
     print(f"Sklearn RandomForest, n_jobs=-1 : {sk_parallel:8.4f} ms")
     print(f"Sklearn RandomForest, n_jobs=1  : {sk_serial:8.4f} ms")
     print(f"ONNX Runtime (otimizado)        : {onnx_latency:8.4f} ms")
     print()
     print(f"Melhoria vs n_jobs=-1 : {(1 - onnx_latency / sk_parallel) * 100:5.1f}%"
-          f"  ({sk_parallel / onnx_latency:.0f}x mais rapido)")
+          f"  ({sk_parallel / onnx_latency:.0f}x mais rápido)")
     print(f"Melhoria vs n_jobs=1  : {(1 - onnx_latency / sk_serial) * 100:5.1f}%"
-          f"  ({sk_serial / onnx_latency:.0f}x mais rapido)")
+          f"  ({sk_serial / onnx_latency:.0f}x mais rápido)")
     print()
     print("Notas:")
-    print("- O estagio de TF-IDF e identico nos dois casos e ficou de fora, para")
-    print("  isolar o ganho da otimizacao aplicada ao classificador.")
-    print("- n_jobs=-1 e a configuracao real do modelo treinado (src/train.py); em")
-    print("  inferencia unitaria ela e a pior das duas, porque o overhead de")
-    print("  despacho do joblib domina o tempo. n_jobs=1 e a baseline mais justa")
+    print("- O estágio de TF-IDF é idêntico nos dois casos e ficou de fora, para")
+    print("  isolar o ganho da otimização aplicada ao classificador.")
+    print("- n_jobs=-1 é a configuração real do modelo treinado (src/train.py); em")
+    print("  inferência unitária ela é a pior das duas, porque o overhead de")
+    print("  despacho do joblib domina o tempo. n_jobs=1 é a baseline mais justa")
     print("  para medir o ganho do ONNX Runtime em si.")
 
 

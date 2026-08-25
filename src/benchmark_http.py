@@ -18,7 +18,7 @@ import json
 import time
 import urllib.request
 
-TEXTO = "Paciente com dor toracica intensa e falta de ar subita"
+TEXTO = "Paciente com dor torácica intensa e falta de ar súbita"
 
 
 def post_predict(url: str, texto: str) -> dict:
@@ -54,7 +54,7 @@ def percentile(values: list, pct: float) -> float:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8000")
-    parser.add_argument("--n", type=int, default=200, help="numero de requisicoes")
+    parser.add_argument("--n", type=int, default=200, help="número de requisições")
     args = parser.parse_args()
 
     with urllib.request.urlopen(f"{args.url}/health", timeout=10) as resp:
@@ -70,12 +70,12 @@ def main():
         model_ms.append(body["latencia_ms"])
 
     avg = sum(client_ms) / len(client_ms)
-    print(f"=== Latencia HTTP end-to-end, backend={backend} ({args.n} requisicoes) ===")
-    print(f"Cliente  media : {avg:8.4f} ms")
+    print(f"=== Latência HTTP end-to-end, backend={backend} ({args.n} requisições) ===")
+    print(f"Cliente  média : {avg:8.4f} ms")
     print(f"Cliente  p50   : {percentile(client_ms, 0.50):8.4f} ms")
     print(f"Cliente  p95   : {percentile(client_ms, 0.95):8.4f} ms")
-    print(f"Servidor media : {server_latency_ms(args.url):8.4f} ms  (histograma /metrics)")
-    print(f"Modelo   media : {sum(model_ms) / len(model_ms):8.4f} ms  (campo latencia_ms)")
+    print(f"Servidor média : {server_latency_ms(args.url):8.4f} ms  (histograma /metrics)")
+    print(f"Modelo   média : {sum(model_ms) / len(model_ms):8.4f} ms  (campo latencia_ms)")
 
 
 if __name__ == "__main__":

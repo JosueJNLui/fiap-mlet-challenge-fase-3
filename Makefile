@@ -1,5 +1,5 @@
-# Atalhos de desenvolvimento. PY aponta para o venv local por padrao;
-# no CI (que instala as dependencias no proprio runner) use: make check PY=python
+# Atalhos de desenvolvimento. PY aponta para o venv local por padrão;
+# no CI (que instala as dependências no próprio runner) use: make check PY=python
 PY ?= .venv/bin/python
 COMPOSE = docker compose -f docker/docker-compose.yml
 
@@ -24,7 +24,7 @@ test:   ## pytest
 
 check: lint test  ## o mesmo que o CI roda antes do build
 
-bench:  ## latencia do classificador (sklearn vs ONNX) e da API HTTP (precisa de `make up`)
+bench:  ## latência do classificador (sklearn vs ONNX) e da API HTTP (precisa de `make up`)
 	$(PY) src/benchmark.py --n 500
 	$(PY) src/benchmark_http.py --n 200
 
