@@ -1,4 +1,4 @@
-version: "3.9"
+name: triagem
 
 services:
   api:
@@ -6,45 +6,45 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: triagem-api
-    ports:
-      - "8000:8000"
     environment:
       - MODEL_BACKEND=${MODEL_BACKEND:-onnx}
-    restart: unless-stopped
-    networks:
-      - triagem-net
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: triagem-prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
-    depends_on:
-      - api
-    restart: unless-stopped
+      - '0.0.0.0:8000:8000'
     networks:
       - triagem-net
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.2.0
     container_name: triagem-grafana
-    ports:
-      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on:
-      - prometheus
-    restart: unless-stopped
+    ports:
+      - '0.0.0.0:3000:3000'
     networks:
       - triagem-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: triagem-prometheus
+    depends_on:
+      - api
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - '0.0.0.0:9090:9090'
+    networks:
+      - triagem-net
+    restart: unless-stopped
 
 networks:
   triagem-net:

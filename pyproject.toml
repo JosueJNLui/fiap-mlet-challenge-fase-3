@@ -1,0 +1,8 @@
+# Configuração de ferramentas de análise estática (ty: https://ty.dev).
+# O projeto usa requirements.txt para dependências; este arquivo é apenas
+# config dos linters/type-checkers.
+[tool.ty.src]
+# `airflow/dags` só é executado dentro do ambiente Airflow, onde o pacote
+# `apache-airflow` está instalado; aqui a pasta local `airflow/` ofuscaria o
+# pacote real e o ty não conseguiria resolver `from airflow import DAG`.
+exclude = ["airflow"]
