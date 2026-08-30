@@ -30,6 +30,9 @@ jobs:
       - name: Lint docker-compose (DCLint)
         run: make lint-compose PY=python
 
+      - name: Validação estática de anotações (ty)
+        run: make lint-ty PY=python
+
   test:
     name: Testes (pytest)
     runs-on: ubuntu-latest

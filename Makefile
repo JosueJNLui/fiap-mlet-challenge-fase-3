@@ -8,20 +8,21 @@ DCLINT = docker run --rm -v $(CURDIR):/app -w /app zavoloklom/dclint:latest-alpi
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose test check bench build up down clean
+.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose lint-ty test check bench build up down clean
 
 help:  ## mostra esta ajuda (alvos disponíveis)
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
+	uv tool install ty@latest
 	uv venv --python 3.11 .venv
 	uv pip install --python $(PY) -r requirements-api.txt \
 		pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 \
-		pytest==8.3.3 httpx==0.27.2 flake8
+		pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
 
 ci-install:  ## instala as dependências usadas pelos alvos do CI
 	$(PY) -m pip install -r requirements-api.txt pandas==2.2.2 \
-		skl2onnx==1.20.0 onnx==1.22.0 pytest==8.3.3 httpx==0.27.2 flake8
+		skl2onnx==1.20.0 onnx==1.22.0 pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
 
 model:  ## gera o dataset, treina e exporta para ONNX (os testes dependem dos artefatos)
 	$(PY) data/generate_data.py
@@ -37,7 +38,10 @@ lint-docker:  ## hadolint no docker/Dockerfile (roda via Docker; exige o daemon)
 lint-compose:  ## DCLint no docker/docker-compose.yml (roda via Docker; exige o daemon)
 	$(DCLINT) docker/docker-compose.yml
 
-lint: lint-python lint-docker lint-compose  ## todos os lints (Python, Dockerfile e docker-compose)
+lint-ty:  ## ty: validação estática das anotações de tipo (config em pyproject.toml)
+	$(PY) -m ty check
+
+lint: lint-python lint-docker lint-compose lint-ty  ## todos os lints (Python, Dockerfile, docker-compose e ty)
 
 test:   ## pytest
 	$(PY) -m pytest tests/ -v
