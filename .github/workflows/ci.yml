@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    name: Lint (flake8)
+    name: Lint (flake8, hadolint, DCLint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,8 +21,14 @@ jobs:
       - name: Install lint dependencies
         run: make ci-install PY=python
 
-      - name: Run flake8
-        run: make lint PY=python
+      - name: Lint Python (flake8)
+        run: make lint-python PY=python
+
+      - name: Lint Dockerfile (hadolint)
+        run: make lint-docker PY=python
+
+      - name: Lint docker-compose (DCLint)
+        run: make lint-compose PY=python
 
   test:
     name: Testes (pytest)

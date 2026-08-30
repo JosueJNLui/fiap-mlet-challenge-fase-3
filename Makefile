@@ -3,8 +3,15 @@
 PY ?= .venv/bin/python
 IMAGE_TAG ?= latest
 COMPOSE = docker compose -f docker/docker-compose.yml
+HADOLINT = docker run --rm -v $(CURDIR):/app -w /app hadolint/hadolint:latest-alpine hadolint
+DCLINT = docker run --rm -v $(CURDIR):/app -w /app zavoloklom/dclint:latest-alpine
 
-.PHONY: setup ci-install model lint test check bench build up down clean
+.DEFAULT_GOAL := help
+
+.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose test check bench build up down clean
+
+help:  ## mostra esta ajuda (alvos disponíveis)
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
 	uv venv --python 3.11 .venv
@@ -21,8 +28,16 @@ model:  ## gera o dataset, treina e exporta para ONNX (os testes dependem dos ar
 	$(PY) src/train.py
 	$(PY) src/export_onnx.py
 
-lint:   ## flake8 (regras em .flake8, as mesmas do CI)
+lint-python:  ## flake8 (regras em .flake8, as mesmas do CI)
 	$(PY) -m flake8 src tests
+
+lint-docker:  ## hadolint no docker/Dockerfile (roda via Docker; exige o daemon)
+	$(HADOLINT) docker/Dockerfile
+
+lint-compose:  ## DCLint no docker/docker-compose.yml (roda via Docker; exige o daemon)
+	$(DCLINT) docker/docker-compose.yml
+
+lint: lint-python lint-docker lint-compose  ## todos os lints (Python, Dockerfile e docker-compose)
 
 test:   ## pytest
 	$(PY) -m pytest tests/ -v
