@@ -1,9 +1,9 @@
 {
-  "title": "Triagem de Laudos - Observabilidade da API",
+  "title": "Triagem de Laudos - Métricas da API",
   "uid": "triagem-api-dashboard",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 5,
   "refresh": "5s",
   "time": { "from": "now-15m", "to": "now" },
   "panels": [
@@ -11,9 +11,11 @@
       "id": 1,
       "title": "Total de Requisições (por status)",
       "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
+          "refId": "A",
           "expr": "sum(rate(http_requests_total[1m])) by (status)",
           "legendFormat": "status {{status}}"
         }
@@ -23,17 +25,21 @@
       "id": 2,
       "title": "Latência de Resposta (p50 / p95 / p99)",
       "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
+          "refId": "p50",
           "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint))",
           "legendFormat": "p50 {{endpoint}}"
         },
         {
+          "refId": "p95",
           "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint))",
           "legendFormat": "p95 {{endpoint}}"
         },
         {
+          "refId": "p99",
           "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint))",
           "legendFormat": "p99 {{endpoint}}"
         }
@@ -41,27 +47,134 @@
     },
     {
       "id": 3,
-      "title": "Taxa de Erro (%)",
+      "title": "QPS por Endpoint",
       "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
+          "refId": "A",
+          "expr": "sum(rate(http_requests_total[1m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Taxa de Erro (%)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
           "expr": "100 * sum(rate(http_errors_total[5m])) / sum(rate(http_requests_total[5m]))",
           "legendFormat": "erro %"
         }
       ]
     },
     {
-      "id": 4,
-      "title": "Predições por Classe de Urgência",
-      "type": "piechart",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 5,
+      "title": "Requisições em Andamento",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
       "targets": [
         {
+          "refId": "A",
+          "expr": "http_server_active_requests",
+          "legendFormat": "ativas"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Predições por Classe de Urgência",
+      "type": "piechart",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
           "expr": "sum(predictions_total) by (classe)",
           "legendFormat": "{{classe}}"
         }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right" },
+        "pieType": "pie",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Latência de Inferência do Modelo (p50 / p95)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "p50",
+          "expr": "histogram_quantile(0.50, sum(rate(model_predict_duration_seconds_bucket[5m])) by (le, classe))",
+          "legendFormat": "p50 {{classe}}"
+        },
+        {
+          "refId": "p95",
+          "expr": "histogram_quantile(0.95, sum(rate(model_predict_duration_seconds_bucket[5m])) by (le, classe))",
+          "legendFormat": "p95 {{classe}}"
+        }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Confiança das Predições (p50 / p95)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "p50",
+          "expr": "histogram_quantile(0.50, sum(rate(model_predict_confidence_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "p95",
+          "expr": "histogram_quantile(0.95, sum(rate(model_predict_confidence_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Total de Predições",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(predictions_total)",
+          "legendFormat": "predições"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 10,
+      "type": "text",
+      "title": "Navegação entre sinais",
+      "datasource": { "type": "datasource", "uid": "grafana" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 24 },
+      "options": {
+        "mode": "markdown",
+        "content": "### Tríade de observabilidade\n\n- **Métricas**: este dashboard (Prometheus via OTLP).\n- **Traces**: abra o dashboard **\"Triagem de Laudos - Traces\"**.\n- **Logs**: abra o dashboard **\"Triagem de Laudos - Logs\"**.\n\nNos logs, clique no campo `trace_id` para abrir o trace no Tempo; no trace, a opção *Logs* mostra os logs daquele trace no Loki."
+      }
     }
   ]
 }

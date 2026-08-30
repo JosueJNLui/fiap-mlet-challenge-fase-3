@@ -1,0 +1,50 @@
+# Configuração do Tempo 3.0 (traces) em modo monolithic (target=all).
+# Recebe traces via OTLP (gRPC 4317 / HTTP 4318) e armazena localmente.
+# Nota: o Tempo 3.0 removeu os blocos `ingester` e `compactor`; o armazenamento
+# recente é feito pelo live-store e a compactação pelo backend_scheduler.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+usage_report:
+  reporting_enabled: false
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+live_store:
+  max_trace_idle: 10s
+  max_block_duration: 5m
+  max_block_bytes: 1000000
+
+backend_scheduler:
+  provider:
+    compaction:
+      compaction:
+        compaction_window: 1h
+        max_block_bytes: 100000000
+        block_retention: 24h
+        compacted_block_retention: 10m
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    compaction:
+      block_retention: 24h
+      compaction_window: 1h
+    metrics_generator:
+      processors: []

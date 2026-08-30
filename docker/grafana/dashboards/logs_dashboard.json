@@ -1,0 +1,74 @@
+{
+  "title": "Triagem de Laudos - Logs",
+  "uid": "triagem-logs-dashboard",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Volume de Logs por Nível",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity_text) (rate({service_name=\"triagem-api\"} [$__interval]))",
+          "legendFormat": "{{severity_text}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Logs de Warning / Erro",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({service_name=\"triagem-api\"} |~ \"(WARNING|ERROR|CRITICAL)\" [$__interval]))",
+          "legendFormat": "warn/erro"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Predições por Classe de Urgência",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (classe) (rate({service_name=\"triagem-api\"} |= \"Predição realizada\" [$__interval]))",
+          "legendFormat": "{{classe}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Logs de Predição",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_name=\"triagem-api\"} |= \"Predição realizada\"",
+          "maxLines": 300
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true
+      }
+    }
+  ]
+}
