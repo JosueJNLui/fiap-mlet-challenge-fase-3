@@ -1,9 +1,15 @@
+# Prometheus: recebe as métricas da API via ingestão nativa OTLP.
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
-scrape_configs:
-  - job_name: "triagem-api"
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["api:8000"]
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+    - deployment.environment
+  keep_identifying_resource_attributes: true

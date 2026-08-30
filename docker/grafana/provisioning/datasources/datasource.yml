@@ -2,8 +2,50 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
     editable: true
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: true
+    jsonData:
+      # Streaming de busca desabilitado: o plugin deriva a porta gRPC da URL do
+      # datasource (3200, que é a porta HTTP do Tempo), causando erros
+      # "http2: frame too large". O Tempo está com stream_over_http_enabled=true,
+      # então as consultas seguem por HTTP normalmente.
+      streamingEnabled:
+        search: false
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '1h'
+        spanEndTimeShift: '1h'
+        tags:
+          - key: service.name
+            value: service_name
+        filterByTraceID: true
+        filterBySpanID: true
+        customQuery: true
+        query: '{$${__tags}} |= `trace_id=$${__trace.traceId}` |= `span_id=$${__span.spanId}`'
+      nodeGraph:
+        enabled: true
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: 'trace_id=([0-9a-fA-F]{32})'
+          name: trace_id
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'Ver trace no Tempo'

@@ -55,11 +55,14 @@ bench:  ## latência do classificador (sklearn vs ONNX) e da API HTTP (precisa d
 build:  ## gera a imagem Docker sem publicar
 	docker build -f docker/Dockerfile -t triagem-laudos-api:$(IMAGE_TAG) .
 
-up:     ## sobe API + Prometheus + Grafana (8000 / 9090 / 3000)
+up:     ## sobe API + Prometheus + Grafana + Tempo + Loki (8000 / 9090 / 3000 / 3200 / 3100)
 	$(COMPOSE) up -d --build
 
 down:   ## derruba a stack
 	$(COMPOSE) down
+
+logs:   ## exibe os logs da stack
+	$(COMPOSE) logs -f
 
 clean:  ## remove caches do Python e do pytest
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

@@ -35,9 +35,3 @@ def test_predict_texto_vazio():
 def test_predict_campo_ausente():
     response = client.post("/predict", json={})
     assert response.status_code == 422
-
-
-def test_metrics_endpoint():
-    response = client.get("/metrics")
-    assert response.status_code == 200
-    assert b"http_requests_total" in response.content
