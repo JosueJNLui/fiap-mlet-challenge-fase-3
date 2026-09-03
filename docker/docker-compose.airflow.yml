@@ -1,0 +1,30 @@
+# Airflow em modo `standalone` (SequentialExecutor + SQLite), separado da stack de
+# observabilidade porque só é usado para demonstrar a DAG de (re)treino.
+# Sobe com `make airflow-up`.
+name: triagem-airflow
+
+services:
+  airflow:
+    image: apache/airflow:2.10.2
+    container_name: triagem-airflow
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      # Libera a UI sem login (só faz sentido em localhost, ver o arquivo).
+      - ./airflow_webserver_config.py:/opt/airflow/webserver_config.py:ro
+      # A DAG executa os scripts de src/ com sys.executable e resolve os caminhos
+      # a partir de PROJECT_ROOT=/opt/airflow/project.
+      - ..:/opt/airflow/project
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      # A imagem do Airflow não traz as dependências de ML; instaladas no start.
+      # Os pins de skl2onnx/onnx são obrigatórios: fora dessa combinação o export
+      # para ONNX quebra.
+      - _PIP_ADDITIONAL_REQUIREMENTS=scikit-learn==1.5.2 pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 joblib==1.4.2
+    ports:
+      - '0.0.0.0:8080:8080'
+    command:
+      - 'standalone'
+    restart: unless-stopped
+    # 50000 é o uid do usuário `airflow` na imagem oficial; o group 0 garante
+    # escrita nos diretórios montados do repositório (data/ e models/).
+    user: '50000:0'

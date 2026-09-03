@@ -173,7 +173,7 @@
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 24 },
       "options": {
         "mode": "markdown",
-        "content": "### Tríade de observabilidade\n\n- **Métricas**: este dashboard (Prometheus via OTLP).\n- **Traces**: abra o dashboard **\"Triagem de Laudos - Traces\"**.\n- **Logs**: abra o dashboard **\"Triagem de Laudos - Logs\"**.\n\nNos logs, clique no campo `trace_id` para abrir o trace no Tempo; no trace, a opção *Logs* mostra os logs daquele trace no Loki."
+        "content": "### Tríade de observabilidade\n\n- **Métricas**: este dashboard (scrape do `prometheus_client` em `GET /metrics`).\n- **Traces**: abra o dashboard **\"Triagem de Laudos - Traces\"**.\n- **Logs**: abra o dashboard **\"Triagem de Laudos - Logs\"**.\n\nNos logs, clique no campo `trace_id` para abrir o trace no Tempo; no trace, a opção *Logs* mostra os logs daquele trace no Loki."
       }
     }
   ]

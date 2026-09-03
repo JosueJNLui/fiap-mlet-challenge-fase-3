@@ -1,11 +1,14 @@
 """
-Configuração do OpenTelemetry (tríade de observabilidade: métricas, logs e traces).
+Configuração do OpenTelemetry (traces e logs).
 
-Os três sinais são exportados via OTLP HTTP diretamente da API para os backends:
+As métricas NÃO passam por aqui: elas são instrumentadas com `prometheus_client`
+e expostas em `GET /metrics` (ver src/app/main.py), que é o caminho pedido pelo
+enunciado e o que o Prometheus coleta por scrape.
 
-  - Métricas -> Prometheus (receiver OTLP nativo em /api/v1/otlp/v1/metrics)
-  - Logs     -> Loki       (ingestão OTLP nativa em /otlp/v1/logs)
-  - Traces   -> Tempo      (ingestão OTLP HTTP em /v1/traces)
+Os dois sinais restantes são exportados via OTLP HTTP diretamente da API:
+
+  - Logs   -> Loki  (ingestão OTLP nativa em /otlp/v1/logs)
+  - Traces -> Tempo (ingestão OTLP HTTP em /v1/traces)
 
 Os endpoints são lidos das variáveis de ambiente OTEL_EXPORTER_OTLP_<SINAL>_ENDPOINT
 (padrão: nomes dos serviços no docker-compose).
@@ -18,16 +21,13 @@ import os
 
 from fastapi import FastAPI
 from opentelemetry import _logs as otel_logs
-from opentelemetry import metrics, trace
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -38,6 +38,10 @@ from opentelemetry.semconv._incubating.attributes.deployment_attributes import (
 
 _SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "triagem-api")
 _LIBRARY_VERSION = "1.0.0"
+
+# O scrape do Prometheus bate em /metrics a cada 5s; sem esta exclusão cada
+# coleta viraria um trace no Tempo e afogaria os spans que interessam.
+_EXCLUDED_URLS = "metrics"
 
 # Formato dos logs exportados para o Loki. Inclui trace_id/span_id no corpo da
 # linha para permitir o salto log -> trace via derived field no datasource Loki.
@@ -65,16 +69,6 @@ def _setup_traces(resource: Resource) -> None:
     trace.set_tracer_provider(provider)
 
 
-def _setup_metrics(resource: Resource) -> None:
-    reader = PeriodicExportingMetricReader(
-        OTLPMetricExporter(),
-        export_interval_millis=int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL", "5000")),
-    )
-    metrics.set_meter_provider(
-        MeterProvider(resource=resource, metric_readers=[reader])
-    )
-
-
 def _setup_logs(resource: Resource) -> None:
     provider = LoggerProvider(resource=resource)
     provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
@@ -97,7 +91,7 @@ def _setup_logs(resource: Resource) -> None:
 
 
 def setup_telemetry(app: FastAPI) -> None:
-    """Inicializa traces, métricas e logs e instrumenta o FastAPI.
+    """Inicializa traces e logs e instrumenta o FastAPI.
 
     No-op quando OTEL_ENABLED=false (útil em testes sem os backends).
     """
@@ -109,30 +103,20 @@ def setup_telemetry(app: FastAPI) -> None:
 
     resource = _build_resource()
     _setup_traces(resource)
-    _setup_metrics(resource)
     _setup_logs(resource)
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(app, excluded_urls=_EXCLUDED_URLS)
     atexit.register(shutdown_telemetry)
 
 
 def shutdown_telemetry() -> None:
     """Faz flush e encerra os providers. Idempotente; chamado no exit do processo."""
-    for provider in (
-        trace.get_tracer_provider(),
-        metrics.get_meter_provider(),
-        otel_logs.get_logger_provider(),
-    ):
+    for provider in (trace.get_tracer_provider(), otel_logs.get_logger_provider()):
         flush = getattr(provider, "force_flush", None)
         if callable(flush):
             flush()
         shutdown = getattr(provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
-
-
-def get_meter(name: str = _SERVICE_NAME, version: str = _LIBRARY_VERSION):
-    """Meter usado para criar instrumentos de métrica."""
-    return metrics.get_meter(name, version)
 
 
 def get_tracer(name: str = _SERVICE_NAME, version: str = _LIBRARY_VERSION):

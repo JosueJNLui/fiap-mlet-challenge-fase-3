@@ -9,10 +9,10 @@ simulando um pipeline real de MLOps (ingestão -> treino -> exportação ->
 validação de artefatos antes de disponibilizar o novo modelo para a API).
 
 Para rodar localmente:
-    export AIRFLOW_HOME=~/airflow
-    airflow db init
-    cp airflow/dags/triage_training_dag.py $AIRFLOW_HOME/dags/
-    airflow standalone
+    make airflow-up   # sobe docker/docker-compose.airflow.yml em localhost:8080
+
+O compose monta o repositório em PROJECT_ROOT, então os artefatos gerados pelas
+tasks aparecem direto em models/ no host.
 """
 from __future__ import annotations
 

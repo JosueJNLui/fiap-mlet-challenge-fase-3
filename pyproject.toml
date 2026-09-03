@@ -5,4 +5,7 @@
 # `airflow/dags` só é executado dentro do ambiente Airflow, onde o pacote
 # `apache-airflow` está instalado; aqui a pasta local `airflow/` ofuscaria o
 # pacote real e o ty não conseguiria resolver `from airflow import DAG`.
-exclude = ["airflow"]
+#
+# `docker/airflow_webserver_config.py` é lido pelo webserver dentro do container
+# do Airflow, que tem `flask_appbuilder`; o venv local não tem.
+exclude = ["airflow", "docker/airflow_webserver_config.py"]

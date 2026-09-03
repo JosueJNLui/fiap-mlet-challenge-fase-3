@@ -7,7 +7,7 @@ caminho completo: rede local -> FastAPI -> Pydantic -> TF-IDF -> classificador
 
 São reportadas três camadas, para deixar claro onde o tempo é gasto:
   - cliente  : relógio de parede do lado de quem chama (inclui rede e JSON);
-  - servidor : histograma http_request_duration_seconds exposto em /metrics;
+  - servidor : delta do histograma http_request_duration_seconds em /metrics;
   - modelo   : campo latencia_ms devolvido pela própria resposta.
 
 Uso:
@@ -30,8 +30,8 @@ def post_predict(url: str, texto: str) -> dict:
         return json.load(resp)
 
 
-def server_latency_ms(base_url: str, endpoint: str = "/predict") -> float:
-    """Média do histograma do Prometheus: _sum / _count para o endpoint."""
+def histogram_snapshot(base_url: str, endpoint: str = "/predict") -> tuple:
+    """Lê (_sum, _count) do histograma do Prometheus para o endpoint."""
     with urllib.request.urlopen(f"{base_url}/metrics", timeout=10) as resp:
         body = resp.read().decode()
     marker = f'endpoint="{endpoint}"'
@@ -43,7 +43,7 @@ def server_latency_ms(base_url: str, endpoint: str = "/predict") -> float:
             total = float(line.rsplit(" ", 1)[1])
         elif line.startswith("http_request_duration_seconds_count"):
             count = float(line.rsplit(" ", 1)[1])
-    return (total / count) * 1000 if count else float("nan")
+    return total, count
 
 
 def percentile(values: list, pct: float) -> float:
@@ -62,6 +62,10 @@ def main():
 
     post_predict(f"{args.url}/predict", TEXTO)  # warmup
 
+    # o histograma é acumulado desde o start do container: só o delta do laço
+    # descreve este benchmark, senão as requisições frias do warm-up entram na média
+    sum_before, count_before = histogram_snapshot(args.url)
+
     client_ms, model_ms = [], []
     for _ in range(args.n):
         start = time.perf_counter()
@@ -69,12 +73,16 @@ def main():
         client_ms.append((time.perf_counter() - start) * 1000)
         model_ms.append(body["latencia_ms"])
 
+    sum_after, count_after = histogram_snapshot(args.url)
+    requests = count_after - count_before
+    server_avg = (sum_after - sum_before) / requests * 1000 if requests else float("nan")
+
     avg = sum(client_ms) / len(client_ms)
     print(f"=== Latência HTTP end-to-end, backend={backend} ({args.n} requisições) ===")
     print(f"Cliente  média : {avg:8.4f} ms")
     print(f"Cliente  p50   : {percentile(client_ms, 0.50):8.4f} ms")
     print(f"Cliente  p95   : {percentile(client_ms, 0.95):8.4f} ms")
-    print(f"Servidor média : {server_latency_ms(args.url):8.4f} ms  (histograma /metrics)")
+    print(f"Servidor média : {server_avg:8.4f} ms  (histograma /metrics)")
     print(f"Modelo   média : {sum(model_ms) / len(model_ms):8.4f} ms  (campo latencia_ms)")
 
 

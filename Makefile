@@ -3,19 +3,19 @@
 PY ?= .venv/bin/python
 IMAGE_TAG ?= latest
 COMPOSE = docker compose -f docker/docker-compose.yml
+COMPOSE_AIRFLOW = docker compose -f docker/docker-compose.airflow.yml
 HADOLINT = docker run --rm -v $(CURDIR):/app -w /app hadolint/hadolint:latest-alpine hadolint
 DCLINT = docker run --rm -v $(CURDIR):/app -w /app zavoloklom/dclint:latest-alpine
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose lint-ty test check bench build up down clean
+.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose lint-ty test check bench build up down airflow-up airflow-down clean
 
 help:  ## mostra esta ajuda (alvos disponíveis)
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
-	uv tool install ty@latest
-	uv venv --python 3.11 .venv
+	uv venv --clear --python 3.11 .venv
 	uv pip install --python $(PY) -r requirements-api.txt \
 		pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 \
 		pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
@@ -35,8 +35,8 @@ lint-python:  ## flake8 (regras em .flake8, as mesmas do CI)
 lint-docker:  ## hadolint no docker/Dockerfile (roda via Docker; exige o daemon)
 	$(HADOLINT) docker/Dockerfile
 
-lint-compose:  ## DCLint no docker/docker-compose.yml (roda via Docker; exige o daemon)
-	$(DCLINT) docker/docker-compose.yml
+lint-compose:  ## DCLint nos arquivos de compose (roda via Docker; exige o daemon)
+	$(DCLINT) docker/docker-compose.yml docker/docker-compose.airflow.yml
 
 lint-ty:  ## ty: validação estática das anotações de tipo (config em pyproject.toml)
 	$(PY) -m ty check
@@ -63,6 +63,15 @@ down:   ## derruba a stack
 
 logs:   ## exibe os logs da stack
 	$(COMPOSE) logs -f
+
+airflow-up:  ## sobe o Airflow standalone em localhost:8080 (UI sem login)
+	$(COMPOSE_AIRFLOW) up -d
+	@echo "Aguardando o Airflow subir (instala as dependencias de ML no start)..."
+	@until curl -sf localhost:8080/health | grep -q '"healthy"'; do sleep 5; done
+	@echo "Airflow pronto em http://localhost:8080 (DAG: triage_model_training_pipeline)"
+
+airflow-down:  ## derruba o Airflow
+	$(COMPOSE_AIRFLOW) down
 
 clean:  ## remove caches do Python e do pytest
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
