@@ -3,6 +3,7 @@ uvicorn[standard]==0.30.6
 scikit-learn==1.5.2
 joblib==1.4.2
 pydantic==2.9.2
+prometheus-client==0.21.0
 onnxruntime==1.19.2
 numpy==1.26.4
 opentelemetry-api==1.44.0
