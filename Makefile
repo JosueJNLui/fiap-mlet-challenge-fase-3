@@ -15,7 +15,6 @@ help:  ## mostra esta ajuda (alvos disponíveis)
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
-	uv tool install ty@latest
 	uv venv --clear --python 3.11 .venv
 	uv pip install --python $(PY) -r requirements-api.txt \
 		pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 \
