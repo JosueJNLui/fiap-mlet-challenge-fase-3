@@ -1,43 +1,52 @@
 Ambiente: macOS (Darwin 25.5.0), Apple M5, Python 3.11, onnxruntime 1.19.2, scikit-learn 1.5.2
-Medido em: 2026-08-25 (make model + .venv/bin/python src/benchmark.py --n 500)
+Medido em: 2026-09-03, contra o código atual da API (três sinais por requisição:
+           métricas via prometheus_client, traces e logs via OTLP)
 
-=== Latência do classificador por requisição (1 amostra, 500 execuções) ===
-Sklearn RandomForest, n_jobs=-1 :  13.5591 ms
-Sklearn RandomForest, n_jobs=1  :   1.3616 ms
-ONNX Runtime (otimizado)        :   0.0052 ms
+=== Escopo 1: classificador isolado (1 amostra, 500 execuções) ===
+Comando: .venv/bin/python src/benchmark.py --n 500
 
-Melhoria vs n_jobs=-1 : 100.0%  (2588x mais rápido)
-Melhoria vs n_jobs=1  :  99.6%  (260x mais rápido)
+Sklearn RandomForest, n_jobs=1  :   1.3174 ms
+Sklearn RandomForest, n_jobs=-1 :  13.3068 ms
+ONNX Runtime (otimizado)        :   0.0065 ms
+
+Melhoria vs n_jobs=1  :  99.5%  (204x mais rápido)   <- ganho da otimização
+Melhoria vs n_jobs=-1 : 100.0%  (2058x mais rápido)  <- nota de rodapé
 
 Notas:
-- O estágio de TF-IDF é idêntico nos dois casos e ficou de fora, para
-  isolar o ganho da otimização aplicada ao classificador.
-- n_jobs=-1 é a configuração real do modelo treinado (src/train.py); em
-  inferência unitária ela é a pior das duas, porque o overhead de
-  despacho do joblib domina o tempo. n_jobs=1 é a baseline mais justa
-  para medir o ganho do ONNX Runtime em si.
+- O estágio de TF-IDF é idêntico nos dois casos e ficou de fora, para isolar o
+  ganho da otimização aplicada ao classificador.
+- n_jobs=1 é a baseline honesta do ganho do ONNX Runtime. Em n_jobs=-1 quase
+  todo o tempo é despacho de threads do joblib, e não trabalho do modelo; o
+  número infla por um motivo que não tem a ver com a otimização. n_jobs=-1 é a
+  configuração real de src/train.py, por isso aparece, mas como rodapé.
 
-=== Latência HTTP end-to-end da API em Docker (Etapa 1) ===
-Medido em: 2026-08-25, stack de docker/docker-compose.yml no mesmo host
+=== Escopo 2: HTTP end-to-end, API em Docker (Etapa 1) ===
 Comando: .venv/bin/python src/benchmark_http.py --n 200
-         (backend sklearn: MODEL_BACKEND=sklearn docker compose ... up -d --force-recreate api)
+         (backend sklearn: MODEL_BACKEND=sklearn docker compose \
+          -f docker/docker-compose.yml up -d --force-recreate api)
 
 Backend  | Cliente média | Cliente p50 | Cliente p95 | Servidor média | Modelo média
 ---------|---------------|-------------|-------------|----------------|-------------
-sklearn  |   13.6573 ms  |  13.4504 ms |  14.6193 ms |    13.1533 ms  |  12.7274 ms
-onnx     |    1.6833 ms  |   1.5898 ms |   2.5873 ms |     0.7979 ms  |   0.2708 ms
+sklearn  |   14.1439 ms  |  13.9757 ms |  15.3033 ms |    13.2080 ms  |  12.7522 ms
+onnx     |    2.4609 ms  |   2.0334 ms |   4.1713 ms |     1.3065 ms  |   0.1801 ms
 
-Melhoria end-to-end (cliente): 87.7%  (8.1x mais rápido)
+Melhoria end-to-end (cliente): 82.6%  (5.7x mais rápido)
 
 Notas:
-- "Cliente" é o relógio de parede de quem chama (inclui rede local, JSON e
-  o overhead do urllib); "Servidor" vem do histograma
-  http_request_duration_seconds exposto em /metrics; "Modelo" é o campo
+- "Cliente" é o relógio de parede de quem chama (inclui rede local, JSON e o
+  overhead do urllib); "Servidor" é o delta do histograma
+  http_request_duration_seconds exposto em /metrics, medido antes e depois do
+  laço para não misturar as requisições frias do warm-up; "Modelo" é o campo
   latencia_ms da própria resposta (TF-IDF + classificador).
-- O ganho de 8.1x aqui é bem menor que os 260x do classificador isolado,
-  e isso é esperado: no caminho HTTP o classificador deixa de ser o único
-  custo. Com ONNX, dos 1.68 ms do cliente apenas 0.27 ms são do modelo, ou
-  seja, o gargalo passou a ser a camada HTTP.
-- O backend sklearn é servido exatamente como foi treinado (n_jobs=-1), que
-  é a configuração que iria para produção sem a otimização; por isso ele
-  carrega o overhead de despacho do joblib descrito na seção anterior.
+- O ganho de 5.7x aqui é bem menor que os 204x do classificador isolado, e isso
+  é esperado: no caminho HTTP o classificador deixa de ser o único custo. Com
+  sklearn o modelo é 90.2% do tempo do cliente; com ONNX cai para 7.3%, ou seja,
+  o gargalo passou a ser a camada HTTP mais a observabilidade.
+- Os 1.31 ms de servidor com ONNX cobrem FastAPI, Pydantic, o middleware de
+  métricas do prometheus_client, o span do OpenTelemetry e o log estruturado
+  enviado ao Loki, além dos 0.18 ms do modelo.
+- O backend sklearn é servido exatamente como foi treinado (n_jobs=-1), que é a
+  configuração que iria para produção sem a otimização; por isso ele carrega o
+  overhead de despacho do joblib descrito no escopo 1.
+- Nada de laço de curl para medir: cada processo custa alguns ms de spawn e
+  domina a medição.
