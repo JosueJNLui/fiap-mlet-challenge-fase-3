@@ -1,15 +1,6 @@
 FROM python:3.11-slim
 
-# Locale completo para evitar problemas com operadores ONNX que dependem de
-# locale (ex.: StringNormalizer). Ver nota em src/export_onnx.py.
-RUN apt-get update && apt-get install -y --no-install-recommends locales \
-    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
-    && locale-gen \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
-    PYTHONUNBUFFERED=1 \
+ENV PYTHONUNBUFFERED=1 \
     MODELS_DIR=/app/models \
     MODEL_BACKEND=onnx
 

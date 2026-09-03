@@ -1,6 +1,0 @@
-# Configuração do hadolint (regras: https://github.com/hadolint/hadolint#rules)
-ignored:
-  # DL3008 pede versão pinada no apt-get install. Pinamos abaixo do nível do
-  # pacote (locales, do Debian base) é frágil, pois quebra a cada patch do
-  # sistema base (python:3.11-slim). Mantemos o pacote sem pinar.
-  - DL3008
