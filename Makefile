@@ -15,7 +15,7 @@ help:  ## mostra esta ajuda (alvos disponíveis)
 
 setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
 	uv tool install ty@latest
-	uv venv --python 3.11 .venv
+	uv venv --clear --python 3.11 .venv
 	uv pip install --python $(PY) -r requirements-api.txt \
 		pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 \
 		pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75

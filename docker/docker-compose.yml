@@ -25,9 +25,9 @@ services:
     image: grafana/grafana:11.2.0
     container_name: triagem-grafana
     depends_on:
+      - loki
       - prometheus
       - tempo
-      - loki
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -45,25 +45,37 @@ services:
       - triagem-net
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:3.7.7
+    container_name: triagem-loki
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - '0.0.0.0:3100:3100'
+    networks:
+      - triagem-net
+    command:
+      - '-config.file=/etc/loki/loki-config.yml'
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v3.14.0
     container_name: triagem-prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--web.enable-otlp-receiver'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - '0.0.0.0:9090:9090'
     networks:
       - triagem-net
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-otlp-receiver'
     restart: unless-stopped
 
   tempo:
     image: grafana/tempo:3.0.3
     container_name: triagem-tempo
-    command:
-      - '-config.file=/etc/tempo.yaml'
     volumes:
       - ./tempo.yml:/etc/tempo.yaml:ro
       - tempo-data:/var/tempo
@@ -72,20 +84,8 @@ services:
       - '0.0.0.0:4318:4318'
     networks:
       - triagem-net
-    restart: unless-stopped
-
-  loki:
-    image: grafana/loki:3.7.7
-    container_name: triagem-loki
     command:
-      - '-config.file=/etc/loki/loki-config.yml'
-    volumes:
-      - ./loki-config.yml:/etc/loki/loki-config.yml:ro
-      - loki-data:/loki
-    ports:
-      - '0.0.0.0:3100:3100'
-    networks:
-      - triagem-net
+      - '-config.file=/etc/tempo.yaml'
     restart: unless-stopped
 
 networks:
