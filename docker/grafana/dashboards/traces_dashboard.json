@@ -5,14 +5,25 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5s",
-  "time": { "from": "now-15m", "to": "now" },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "title": "Traces por segundo",
       "type": "timeseries",
-      "datasource": { "type": "tempo", "uid": "tempo" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
         {
           "refId": "A",
@@ -22,64 +33,98 @@
           "query": "{ resource.service.name = \"triagem-api\" } | rate()",
           "legendFormat": "traces/s"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "spans/s"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 2,
-      "title": "Latência dos Traces (p50 / p95)",
+      "title": "Latência dos Traces (p95)",
       "type": "timeseries",
-      "datasource": { "type": "tempo", "uid": "tempo" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
         {
-          "refId": "p50",
-          "queryType": "traceql",
-          "metricsQueryType": "range",
-          "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" } | quantile_over_time(duration, 0.50)",
-          "legendFormat": "p50"
-        },
-        {
-          "refId": "p95",
+          "refId": "A",
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
           "query": "{ resource.service.name = \"triagem-api\" } | quantile_over_time(duration, 0.95)",
           "legendFormat": "p95"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "p95"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 3,
-      "title": "Taxa de Erros (status = error)",
+      "title": "Latência dos Traces (p50)",
       "type": "timeseries",
-      "datasource": { "type": "tempo", "uid": "tempo" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
         {
           "refId": "A",
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" && status = error } | rate()",
-          "legendFormat": "erros/s"
+          "query": "{ resource.service.name = \"triagem-api\" } | quantile_over_time(duration, 0.50)",
+          "legendFormat": "p50"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "p50"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 4,
       "title": "Requisições por Classe de Urgência",
       "type": "timeseries",
-      "datasource": { "type": "tempo", "uid": "tempo" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
       "targets": [
         {
           "refId": "A",
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" } | rate() by (classe)",
-          "legendFormat": "{{classe}}"
+          "query": "{ resource.service.name = \"triagem-api\" && span.response.classificacao != nil } | rate() by (span.response.classificacao)",
+          "legendFormat": "{{span.response.classificacao}}"
         }
       ]
     },
@@ -87,8 +132,16 @@
       "id": 5,
       "title": "Traces Recentes",
       "type": "table",
-      "datasource": { "type": "tempo", "uid": "tempo" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "targets": [
         {
           "refId": "A",
