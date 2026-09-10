@@ -89,13 +89,28 @@ def _alias_metric(client: MlflowClient, name: str, alias: str, metric: str) -> f
     return client.get_run(mv.run_id).data.metrics.get(metric)
 
 
-def promote_to_production(registered_model_name: str, metric_value: float, metric_name: str = "f1_macro") -> None:
+def promote_to_production(
+    registered_model_name: str,
+    metric_value: float,
+    metric_name: str = "f1_macro",
+    settings: Settings | None = None,
+) -> None:
     """Promove a última versão do modelo no Model Registry.
 
     Toda versão vira ``staging``; o alias ``production`` só migra para ela se a
     ``metric_value`` informada bater a da produção atual (ou se ainda não houver produção).
     """
-    client = MlflowClient()
+    settings = settings or load_settings()
+
+    # Configura tracking URI se tiver token (DagsHub)
+    if settings.dagshub_token:
+        os.environ["MLFLOW_TRACKING_USERNAME"] = settings.dagshub_user or settings.dagshub_token
+        os.environ["MLFLOW_TRACKING_PASSWORD"] = settings.dagshub_token
+        uri = f"https://dagshub.com/{settings.dagshub_repo_owner}/{settings.dagshub_repo_name}.mlflow"
+        client = MlflowClient(tracking_uri=uri)
+    else:
+        client = MlflowClient()
+
     versions = client.search_model_versions(f"name='{registered_model_name}'")
     if not versions:
         return

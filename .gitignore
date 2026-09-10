@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MLflow local (fallback sem DagsHub) e credenciais
+mlflow.db
+mlruns/
+.env
