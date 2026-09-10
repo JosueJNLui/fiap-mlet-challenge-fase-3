@@ -15,14 +15,20 @@ def test_health():
     assert response.json()["status"] == "ok"
 
 
-def test_predict_urgente():
+def test_predict_conditions():
     response = client.post(
         "/predict",
-        json={"texto": "Paciente com dor torácica intensa e falta de ar súbita"},
+        json={"texto": "Patient with chest pain and shortness of breath"},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["classificacao"] in {"normal", "atencao", "urgente"}
+    assert body["classificacao"] in {
+        "cardiovascular diseases",
+        "digestive system diseases",
+        "general pathological conditions",
+        "neoplasms",
+        "nervous system diseases",
+    }
     assert 0.0 <= body["confianca"] <= 1.0
     assert "probabilidades" in body
 

@@ -10,8 +10,14 @@ MODELS_DIR = Path(__file__).resolve().parents[1] / "models"
 
 def test_sklearn_model_loads_and_predicts():
     pipeline = joblib.load(MODELS_DIR / "model.joblib")
-    pred = pipeline.predict(["Paciente com febre alta e rigidez de nuca"])
-    assert pred[0] in {"normal", "atencao", "urgente"}
+    pred = pipeline.predict(["Patient with chest pain and shortness of breath"])
+    assert pred[0] in {
+        "cardiovascular diseases",
+        "digestive system diseases",
+        "general pathological conditions",
+        "neoplasms",
+        "nervous system diseases",
+    }
 
 
 def test_onnx_files_exist():
