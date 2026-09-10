@@ -307,7 +307,7 @@ A API emite três sinais:
 | Sinal | Como | Destino |
 |---|---|---|
 | Métricas | `prometheus_client` em `GET /metrics` | Prometheus (scrape a cada 5s) |
-| Traces | OpenTelemetry, instrumentação automática do FastAPI mais um span manual `predict` | Tempo (OTLP/HTTP) |
+| Traces | OpenTelemetry: instrumentação automática do FastAPI + spans/fases manuais | Tempo (OTLP/HTTP) |
 | Logs | `logging` do Python com `trace_id` e `span_id` correlacionados | Loki (OTLP/HTTP) |
 
 **Decisão:** métricas ficaram integralmente com o `prometheus_client`, citado nominalmente no
@@ -334,6 +334,62 @@ predições.
 ### Traces (5 painéis)
 
 ![Dashboard de traces](docs/dashboard_traces.png)
+
+#### Node graph detalhado por fase
+
+Além do nó HTTP automático do FastAPI (`POST /predict`), cada predição abre nós
+(fases) com eventos e atributos próprios, visíveis no **node graph** / *Trace
+View* do Tempo:
+
+| Nó | O que registra |
+|---|---|
+| `predict` | validação do payload, classes/confiança/modelo retornados, aviso de baixa confiança (`< 0.5`) |
+| `model.vectorize` | TF-IDF: nº de features, shape da entrada, duração da fase |
+| `model.inference` | ONNX Runtime: shape da saída (probs), duração da fase |
+| `model.predict_proba` | backend sklearn: nº de classes de saída |
+| `model.postprocess` | argmax/classe escolhida, confiança, latência total |
+| `model.load` | carregamento do modelo no boot (backend, diretório) |
+
+Cada fase emite eventos `*.start` e `*.ok` (ou `*.error` + `exception` em falha)
+e o atributo `phase.latency_ms`. Exceções ficam com `StatusCode.ERROR` e a
+mensagem/StackTrace no span.
+
+#### Verbosidade controlada por env var
+
+O quanto entra em cada nó é controlado por variáveis de ambiente na API (não
+exige rebuild de imagem):
+
+| Env var | Valores | Efeito |
+|---|---|---|
+| `OTEL_ENABLED` | `true`/`false` | liga/desliga traces + logs inteiramente |
+| `TRACING_LEVEL` | `error`/`warning`/`info` | `error` só exceções; `warning` soma avisos (payload vazio, baixa confiança); `info` soma eventos de progresso por fase |
+| `TRACING_LOG_PAYLOAD` | `true`/`false` | inclui o texto do abstract (truncado) como atributo do span |
+| `TRACING_MAX_TEXT_CHARS` | int | tamanho máximo do texto armazenado em atributo de span (padrão `200`) |
+
+A implementação é `src/app/tracing.py` (`trace_step`, `add_event`); as env vars
+padrão estão em `docker/docker-compose.yml` e documentadas em `.env.example`.
+
+#### Logs estruturados por fase (Loki)
+
+Cada fase que gera span também emite um log estruturado com os mesmos campos do
+nó de trace (correlacionados via `trace_id`/`span_id` na linha), permitindo o
+salto log -> trace no Grafana:
+
+| Log | Nível | Campos |
+|---|---|---|
+| `Requisição recebida` | info | método, path, content-length |
+| `Requisição concluída` | info | método, path, status, duração |
+| `Requisição finalizada com erro de cliente` | warning | path, status (4xx/5xx) |
+| `Erro não tratado na requisição` | error | método, path + stacktrace |
+| `Payload validado` / `Predição rejeitada: texto vazio.` | info / warning | tamanho do texto, motivo |
+| `Texto vetorizado (TF-IDF)` / `Inferência concluída (ONNX Runtime)` / `Inferência concluída (sklearn)` | info | backend, features, shape, duração da fase |
+| `Predição gerada no postprocess` / `Predição realizada` | info | classe, confiança, latência |
+| `Confiança abaixo de 0.5` | warning | classe, confiança |
+| `Modelo carregado` | info | backend, diretório, nº de classes |
+
+A verbosidade é controlada por `LOG_LEVEL=error|warning|info` (padrão `info`),
+que limita tanto o handler OTLP quanto os loggers do pacote `app`; o env var é
+lido em `src/app/telemetry.py`.
 
 ### Logs (4 painéis)
 

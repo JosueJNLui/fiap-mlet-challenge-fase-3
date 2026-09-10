@@ -39,6 +39,15 @@ from opentelemetry.semconv._incubating.attributes.deployment_attributes import (
 _SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "triagem-api")
 _LIBRARY_VERSION = "1.0.0"
 
+# Verbosidade dos logs estruturados exportados para o Loki, controlada por
+# LOG_LEVEL: error | warning | info (padrão: info). O nível vale para o handler
+# OTLP e para os loggers do pacote `app`/serviço (get_logger).
+_LEVELS = {
+    "error": logging.ERROR,
+    "warning": logging.WARNING,
+    "info": logging.INFO,
+}
+
 # O scrape do Prometheus bate em /metrics a cada 5s; sem esta exclusão cada
 # coleta viraria um trace no Tempo e afogaria os spans que interessam.
 _EXCLUDED_URLS = "metrics"
@@ -75,11 +84,12 @@ def _setup_logs(resource: Resource) -> None:
     otel_logs.set_logger_provider(provider)
 
     # Injetar trace_id/span_id nos records e enviar os logs para o Loki via
-    # handler OTLP instalado no logger raiz do Python.
+    # handler OTLP instalado no logger raiz do Python. O limiar do handler é
+    # governado por LOG_LEVEL (error|warning|info).
     LoggingInstrumentor().instrument(
         inject_trace_context=True,
         log_code_attributes=True,
-        log_handler_level=logging.INFO,
+        log_handler_level=_loglevel(),
     )
     handler = LoggingInstrumentor._logging_handler
     if handler is not None:
@@ -90,11 +100,25 @@ def _setup_logs(resource: Resource) -> None:
         )
 
 
+def _loglevel() -> int:
+    """Nível de logging do aplicativo conforme LOG_LEVEL (error|warning|info)."""
+    return _LEVELS.get(os.getenv("LOG_LEVEL", "info").strip().lower(), logging.INFO)
+
+
+def _configure_app_loggers() -> None:
+    # Loggers do pacote `app`* herdam o nível do logger pai "app"; sem isso os
+    # records INFO de cada módulo seriam filtrados pelo default WARNING da raiz
+    # e nunca chegariam ao handler OTLP do Loki.
+    for name in ("app", _SERVICE_NAME):
+        logging.getLogger(name).setLevel(_loglevel())
+
+
 def setup_telemetry(app: FastAPI) -> None:
     """Inicializa traces e logs e instrumenta o FastAPI.
 
     No-op quando OTEL_ENABLED=false (útil em testes sem os backends).
     """
+    _configure_app_loggers()
     if os.getenv("OTEL_ENABLED", "true").strip().lower() != "true":
         logging.getLogger(_SERVICE_NAME).info(
             "OpenTelemetry desabilitado (OTEL_ENABLED=false)."
@@ -127,9 +151,9 @@ def get_tracer(name: str = _SERVICE_NAME, version: str = _LIBRARY_VERSION):
 def get_logger(name: str = _SERVICE_NAME) -> logging.Logger:
     """Logger do aplicativo; os records são exportados para o Loki via OTLP.
 
-    O Python default é WARNING na raiz; garanta nível INFO para que os logs
-    estruturados (ex.: 'Predição realizada') cheguem ao handler OTLP.
+    O nível é governado por LOG_LEVEL (error|warning|info) para que os logs
+    estruturados por fase possam ser ligados/desligados no deploy.
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(_loglevel())
     return logger

@@ -13,6 +13,13 @@ services:
       - OTEL_TRACES_SAMPLER=parentbased_always_on
       - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4318/v1/traces
       - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://loki:3100/otlp/v1/logs
+      # Verbosidade do tracing por fase: error | warning | info.
+      - TRACING_LEVEL=${TRACING_LEVEL:-info}
+      # Inclui o texto do abstract (truncado) como atributo de span.
+      - TRACING_LOG_PAYLOAD=${TRACING_LOG_PAYLOAD:-false}
+      - TRACING_MAX_TEXT_CHARS=${TRACING_MAX_TEXT_CHARS:-200}
+      # Verbosidade dos logs estruturados (Loki): error | warning | info.
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - '0.0.0.0:8000:8000'
     networks:
