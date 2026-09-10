@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class LaudoRequest(BaseModel):
-    texto: str = Field(..., min_length=3, description="Texto do laudo médico / sintomas relatados")
+    texto: str = Field(..., min_length=3, description="Texto do abstract médico / relato clínico")
 
 
 class LaudoResponse(BaseModel):
