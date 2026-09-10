@@ -1,0 +1,24 @@
+# Configuração do pipeline de classificação de condições médicas
+# Valores reprodutíveis (lidos pelo YAML); segredos via .env
+
+seed: 42
+
+paths:
+  raw: "data/raw"
+  processed: "data/processed"
+  models: "models"
+
+train:
+  tfidf_max_features: 5000
+  tfidf_ngram_range: [1, 2]
+  rf_n_estimators: 100
+  rf_max_depth: 15
+  rf_random_state: 42
+  test_size: 0.2
+  random_state: 42
+
+mlflow:
+  experiment_name: "Medical-Abstracts-Classification"
+
+dagshub_repo_owner: "JosueJNLui"
+dagshub_repo_name: "fiap-mlet-challenge-fase-3"

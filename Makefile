@@ -18,11 +18,13 @@ setup:  ## cria o venv (Python 3.11, igual ao Dockerfile e ao CI) e instala tudo
 	uv venv --clear --python 3.11 .venv
 	uv pip install --python $(PY) -r requirements-api.txt \
 		pandas==2.2.2 skl2onnx==1.20.0 onnx==1.22.0 \
-		pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
+		pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75 \
+		mlflow>=3.14.0 dagshub>=0.7.0 pydantic-settings==2.5.2 pyyaml>=6.0
 
 ci-install:  ## instala as dependências usadas pelos alvos do CI
 	$(PY) -m pip install -r requirements-api.txt pandas==2.2.2 \
-		skl2onnx==1.20.0 onnx==1.22.0 pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
+		skl2onnx==1.20.0 onnx==1.22.0 pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75 \
+		mlflow>=3.14.0 dagshub>=0.7.0 pydantic-settings==2.5.2 pyyaml>=6.0
 
 model:  ## baixa o dataset, treina e exporta para ONNX (os testes dependem dos artefatos)
 	$(PY) data/download_medical_abstracts.py

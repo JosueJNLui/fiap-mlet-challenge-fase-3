@@ -419,9 +419,11 @@ para a API.
 .
 ├── .github/workflows/ci.yml          pipeline de CI (lint -> test -> build)
 ├── airflow/dags/                     DAG de retreino (load -> train -> export -> validate)
+├── configs/
+│   └── config.yaml                   configuração reprodutível do pipeline
 ├── data/
-│   ├── generate_data.py              gerador do dataset sintético
-│   └── laudos.csv                    2100 laudos, 700 por classe
+│   ├── download_medical_abstracts.py download do Medical Abstracts TC Corpus
+│   └── laudos.csv                    14.438 abstracts, 5 classes
 ├── docker/
 │   ├── Dockerfile                    imagem da API (python:3.11-slim)
 │   ├── docker-compose.yml            API + Prometheus + Grafana + Tempo + Loki
@@ -434,12 +436,16 @@ para a API.
 ├── scripts/populate_dashboards.py    gerador de tráfego para popular os painéis
 ├── src/
 │   ├── app/                          API FastAPI: main, model_loader, schemas, telemetry
-│   ├── train.py                      treino do pipeline TF-IDF + RandomForest
+│   ├── triage/
+│   │   ├── config.py                 configuração central (Pydantic Settings + YAML)
+│   │   └── tracking.py               integração MLflow/DagsHub (tracking + registry)
+│   ├── train.py                      treino do pipeline TF-IDF + RandomForest + MLflow
 │   ├── export_onnx.py                conversão do classificador para ONNX
 │   ├── benchmark.py                  latência do classificador isolado
 │   └── benchmark_http.py             latência HTTP end-to-end
 ├── tests/                            pytest: API, artefatos, métricas, telemetria
 ├── Makefile                          todos os atalhos (make help)
+├── .env.example                      exemplo de variáveis de ambiente (DagsHub token)
 └── requirements*.txt                 dependências (a da API é enxuta, sem treino)
 ```
 
@@ -448,7 +454,46 @@ de `pandas`, `skl2onnx` nem das ferramentas de treino, apenas do necessário par
 
 ---
 
-## 11. Vídeo STAR
+## 11. MLflow & DagsHub Model Registry
+
+O pipeline integra **MLflow** para experiment tracking e **DagsHub** como backend remoto
+(Model Registry, artifact store, UI de comparação de runs).
+
+### Como funciona
+
+- **Com credenciais DagsHub** (`DAGSHUB_TOKEN` no `.env`): tracking remoto em
+  `https://dagshub.com/JosueJNLui/fiap-mlet-challenge-fase-3.mlflow`, modelos registrados
+  no Model Registry com aliases `staging`/`production`, promoção automática baseada em `f1_macro`.
+- **Sem credenciais** (CI, desenvolvimento local): fallback para SQLite local
+  (`/tmp/mlflow_local/mlflow.db`), registra modelo localmente, **não promove** para production.
+
+### Configuração
+
+```bash
+cp .env.example .env
+# Edite .env com suas credenciais DagsHub
+```
+
+### Modelo registrado
+
+- **Nome**: `MedicalAbstractsClassifier`
+- **Flavor**: `pyfunc` (wrapper `ClassifierPyfunc` expõe `Pipeline.predict` + `predict_proba`)
+- **Signature**: inferida automaticamente (input: `DataFrame[texto]`, output: `DataFrame[prediction, probabilities]`)
+- **Aliases**: `staging` (toda versão), `production` (só se `f1_macro` > produção atual)
+
+### Promoção manual (se necessário)
+
+```bash
+# Com token configurado
+PYTHONPATH=src .venv/bin/python -c "
+from triage.tracking import promote_to_production
+promote_to_production('MedicalAbstractsClassifier', 0.35, 'f1_macro')
+"
+```
+
+---
+
+## 12. Vídeo STAR
 
 Link: _a preencher_
 

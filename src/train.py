@@ -3,6 +3,7 @@ Treina o classificador de condições médicas a partir de abstracts médicos.
 
 Pipeline: TF-IDF (vetorização) + RandomForestClassifier (classificação leve).
 Salva o pipeline treinado em models/model.joblib.
+Loga métricas e modelo no MLflow (DagsHub se credenciais disponíveis, senão local).
 
 Uso:
     python src/train.py --data data/laudos.csv --out models/model.joblib
@@ -19,15 +20,24 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
+from triage.config import load_settings
+from triage.tracking import init_mlflow, log_classifier, promote_to_production
 
-def build_pipeline() -> Pipeline:
+
+def build_pipeline(cfg) -> Pipeline:
     return Pipeline(
         steps=[
-            ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
+            ("tfidf", TfidfVectorizer(
+                max_features=cfg.tfidf_max_features,
+                ngram_range=tuple(cfg.tfidf_ngram_range)
+            )),
             (
                 "clf",
                 RandomForestClassifier(
-                    n_estimators=100, max_depth=15, random_state=42, n_jobs=-1
+                    n_estimators=cfg.rf_n_estimators,
+                    max_depth=cfg.rf_max_depth,
+                    random_state=cfg.rf_random_state,
+                    n_jobs=-1
                 ),
             ),
         ]
@@ -47,7 +57,10 @@ def main():
     parser.add_argument("--out", default="models/model.joblib")
     args = parser.parse_args()
 
-    set_global_seeds(42)
+    settings = load_settings()
+    cfg = settings.train
+
+    set_global_seeds(cfg.random_state)
 
     df = pd.read_csv(args.data)
     df = df.dropna(subset=["texto", "label"])
@@ -58,19 +71,57 @@ def main():
     print(f"Distribuição:\n{df['label'].value_counts()}")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        df["texto"], df["label"], test_size=0.2, random_state=42, stratify=df["label"]
+        df["texto"], df["label"], test_size=cfg.test_size,
+        random_state=cfg.random_state, stratify=df["label"]
     )
 
-    pipeline = build_pipeline()
+    pipeline = build_pipeline(cfg)
+
+    # Inicializa MLflow (DagsHub ou fallback local)
+    tracking_uri = init_mlflow(settings)
+    print(f"MLflow tracking: {tracking_uri}")
 
     start = time.time()
-    pipeline.fit(X_train, y_train)
-    train_time = time.time() - start
+    with mlflow.start_run():
+        pipeline.fit(X_train, y_train)
+        train_time = time.time() - start
 
-    y_pred = pipeline.predict(X_test)
-    print(f"\nTempo de treino: {train_time:.2f}s")
-    print(classification_report(y_test, y_pred))
+        y_pred = pipeline.predict(X_test)
+        report = classification_report(y_test, y_pred, output_dict=True)
 
+        print(f"\nTempo de treino: {train_time:.2f}s")
+        print(classification_report(y_test, y_pred))
+
+        # Log métricas
+        mlflow.log_param("model_type", "RandomForest")
+        mlflow.log_param("tfidf_max_features", cfg.tfidf_max_features)
+        mlflow.log_param("tfidf_ngram_range", cfg.tfidf_ngram_range)
+        mlflow.log_param("rf_n_estimators", cfg.rf_n_estimators)
+        mlflow.log_param("rf_max_depth", cfg.rf_max_depth)
+        mlflow.log_param("test_size", cfg.test_size)
+        mlflow.log_param("random_state", cfg.random_state)
+        mlflow.log_param("n_samples_train", len(X_train))
+        mlflow.log_param("n_samples_test", len(X_test))
+        mlflow.log_param("n_classes", len(classes))
+
+        mlflow.log_metric("train_time_seconds", train_time)
+        mlflow.log_metric("accuracy", report["accuracy"])
+        mlflow.log_metric("f1_macro", report["macro avg"]["f1-score"])
+        mlflow.log_metric("f1_weighted", report["weighted avg"]["f1-score"])
+        for cls in classes:
+            if cls in report:
+                mlflow.log_metric(f"f1_{cls.replace(' ', '_')}", report[cls]["f1-score"])
+
+        # Log modelo e registra
+        example = pd.DataFrame({"texto": X_test[:5].tolist()})
+        registered_name = "MedicalAbstractsClassifier"
+        log_classifier(pipeline, example, registered_name)
+
+        # Promove para production se métrica melhorar (só no DagsHub)
+        if settings.dagshub_token:
+            promote_to_production(registered_name, report["macro avg"]["f1-score"], "f1_macro")
+
+    # Salva artefato local (para API/Docker)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipeline, out_path)
@@ -78,4 +129,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import mlflow
     main()
