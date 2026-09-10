@@ -1,48 +1,53 @@
 """
 Gerador de tráfego para popular os dashboards de observabilidade da API em execução.
 
-Envia várias triagens (POST /predict) com textos de sintomas variados por classe
-(normal / atencao / urgente), além de requests de health e casos de validação
-(400 e 422), enriquecendo métricas, logs e traces nos dashboards do Grafana.
+Envia várias predições (POST /predict) com abstracts médicos reais das cinco
+condições do Medical Abstracts TC Corpus (cardiovascular diseases, digestive
+system diseases, general pathological conditions, neoplasms e nervous system
+diseases), além de requests de health e casos de validação (400 e 422),
+enriquecendo métricas, logs e traces nos dashboards do Grafana.
+
+Os textos são sorteados de data/laudos.csv (a base atual), agrupados por label,
+então o tráfego exercita exatamente as classes do modelo em produção.
 
 Uso:
     python scripts/populate_dashboards.py                          # padrão: 300 predições
     python scripts/populate_dashboards.py --n 1000 --interval 0.1 \
-        --url http://localhost:8000
+        --url http://localhost:8000 --data data/laudos.csv
 """
 import argparse
+import csv
 import json
 import random
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 HEALTH_OK = (200,)
 STATUS_LABEL = "status"
 
-TEXTOS = {
-    "normal": [
-        "Paciente relata check-up de rotina, sem queixas relevantes.",
-        "Raio-x de tórax sem alterações, paciente assintomático.",
-        "Consulta de retorno, paciente estável, sem sintomas novos.",
-        "Hemograma completo dentro da normalidade, sem sinais de infecção.",
-        "Vacinação de rotina realizada sem intercorrências.",
-    ],
-    "atencao": [
-        "Paciente com febre baixa persistente há 3 dias, sem outros sintomas graves.",
-        "Paciente relata tosse persistente há uma semana, sem falta de ar.",
-        "Pressão arterial levemente elevada, recomendado acompanhamento.",
-        "Dor lombar moderada, sem sinais neurológicos associados.",
-        "Glicemia de jejum levemente alterada, indicado acompanhamento nutricional.",
-    ],
-    "urgente": [
-        "Paciente apresenta dor torácica intensa e falta de ar súbita.",
-        "Sinais de acidente vascular cerebral: perda de força e fala arrastrada.",
-        "Paciente com febre alta e rigidez de nuca, suspeita de meningite.",
-        "Reação alérgica grave com edema de glote e dificuldade respiratória.",
-        "Politraumatismo grave após queda de altura, necessita intervenção imediata.",
-    ],
-}
+CLASSES = [
+    "cardiovascular diseases",
+    "digestive system diseases",
+    "general pathological conditions",
+    "neoplasms",
+    "nervous system diseases",
+]
+
+DEFAULT_DATA = Path(__file__).resolve().parent.parent / "data" / "laudos.csv"
+
+
+def load_textos_por_classe(data_path: Path) -> dict[str, list[str]]:
+    """Lê data/laudos.csv e agrupa os abstracts por classe (colunas texto/label)."""
+    textos: dict[str, list[str]] = {c: [] for c in CLASSES}
+    with open(data_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            label = row.get("label")
+            texto = row.get("texto")
+            if label in textos and texto:
+                textos[label].append(texto)
+    return textos
 
 
 def request(
@@ -73,7 +78,7 @@ def fmt_status(status: int) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Popula métricas/logs/traces da API com várias triagens."
+        description="Popula métricas/logs/traces da API com várias predições."
     )
     parser.add_argument("--url", default="http://localhost:8000", help="base da API")
     parser.add_argument(
@@ -88,10 +93,27 @@ def main():
     parser.add_argument(
         "--seed", type=int, default=42, help="semente do sorteio dos textos"
     )
+    parser.add_argument(
+        "--data",
+        default=str(DEFAULT_DATA),
+        help="CSV com colunas 'texto' e 'label' (padrão: data/laudos.csv)",
+    )
     args = parser.parse_args()
 
-    random.seed(args.seed)
-    classes = list(TEXTOS)
+    rng = random.Random(args.seed)
+    classes = list(CLASSES)
+
+    data_path = Path(args.data)
+    if not data_path.exists():
+        print(f"Arquivo de dados não encontrado: {data_path}")
+        print("Gere o dataset com 'make model' ou aponte --data para um CSV válido.")
+        raise SystemExit(1)
+
+    textos_por_classe = load_textos_por_classe(data_path)
+    for classe in classes:
+        if not textos_por_classe[classe]:
+            print(f"Classe '{classe}' sem textos em {data_path}.")
+            raise SystemExit(1)
 
     status_code, _ = request(f"{args.url}/health")
     if status_code not in HEALTH_OK:
@@ -104,8 +126,8 @@ def main():
 
     for i in range(1, args.n + 1):
         classe = classes[i % len(classes)]
-        texto = random.choice(TEXTOS[classe])
-        status_code, body = request(f"{args.url}/predict", {"texto": texto})
+        texto = rng.choice(textos_por_classe[classe])
+        status_code, _ = request(f"{args.url}/predict", {"texto": texto})
         counts[fmt_status(status_code)] = counts.get(fmt_status(status_code), 0) + 1
 
         if i % 10 == 0 or i == args.n:
