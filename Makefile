@@ -24,8 +24,8 @@ ci-install:  ## instala as dependências usadas pelos alvos do CI
 	$(PY) -m pip install -r requirements-api.txt pandas==2.2.2 \
 		skl2onnx==1.20.0 onnx==1.22.0 pytest==8.3.3 httpx==0.27.2 flake8 ty==0.0.75
 
-model:  ## gera o dataset, treina e exporta para ONNX (os testes dependem dos artefatos)
-	$(PY) data/generate_data.py
+model:  ## baixa o dataset, treina e exporta para ONNX (os testes dependem dos artefatos)
+	$(PY) data/download_medical_abstracts.py
 	$(PY) src/train.py
 	$(PY) src/export_onnx.py
 
