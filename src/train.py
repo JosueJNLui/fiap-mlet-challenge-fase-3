@@ -1,5 +1,5 @@
 """
-Treina o classificador de urgência de laudos médicos.
+Treina o classificador de condições médicas a partir de abstracts médicos.
 
 Pipeline: TF-IDF (vetorização) + RandomForestClassifier (classificação leve).
 Salva o pipeline treinado em models/model.joblib.
@@ -23,15 +23,22 @@ from sklearn.pipeline import Pipeline
 def build_pipeline() -> Pipeline:
     return Pipeline(
         steps=[
-            ("tfidf", TfidfVectorizer(max_features=3000, ngram_range=(1, 2))),
+            ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
             (
                 "clf",
                 RandomForestClassifier(
-                    n_estimators=200, max_depth=20, random_state=42, n_jobs=-1
+                    n_estimators=100, max_depth=15, random_state=42, n_jobs=-1
                 ),
             ),
         ]
     )
+
+
+def set_global_seeds(seed: int = 42):
+    import random
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def main():
@@ -40,8 +47,15 @@ def main():
     parser.add_argument("--out", default="models/model.joblib")
     args = parser.parse_args()
 
+    set_global_seeds(42)
+
     df = pd.read_csv(args.data)
     df = df.dropna(subset=["texto", "label"])
+
+    # Verificar classes
+    classes = sorted(df["label"].unique())
+    print(f"Classes encontradas ({len(classes)}): {classes}")
+    print(f"Distribuição:\n{df['label'].value_counts()}")
 
     X_train, X_test, y_train, y_test = train_test_split(
         df["texto"], df["label"], test_size=0.2, random_state=42, stratify=df["label"]
@@ -54,7 +68,7 @@ def main():
     train_time = time.time() - start
 
     y_pred = pipeline.predict(X_test)
-    print(f"Tempo de treino: {train_time:.2f}s")
+    print(f"\nTempo de treino: {train_time:.2f}s")
     print(classification_report(y_test, y_pred))
 
     out_path = Path(args.out)

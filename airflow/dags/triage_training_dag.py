@@ -1,5 +1,5 @@
 """
-DAG Airflow: pipeline de (re)treino do classificador de triagem de laudos.
+DAG Airflow: pipeline de (re)treino do classificador de condições médicas a partir de abstracts.
 
 Fluxo:
     load_data >> train_model >> export_onnx >> validate_model
@@ -39,8 +39,8 @@ def _run(script: str, args: list[str] | None = None):
 
 
 def load_data():
-    """Task 1: gera/carrega o CSV de dados de treino."""
-    _run("data/generate_data.py")
+    """Task 1: baixa e processa o dataset Medical Abstracts TC Corpus."""
+    _run("data/download_medical_abstracts.py")
 
 
 def train_model():

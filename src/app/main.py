@@ -1,14 +1,15 @@
 """
-API de triagem automática de laudos médicos.
+API de classificação de condições médicas a partir de abstracts.
 
 Endpoints:
-  POST /predict  -> classifica um laudo em normal / atencao / urgente
+  POST /predict  -> classifica um abstract em 5 condições médicas
   GET  /health   -> healthcheck simples
   GET  /metrics  -> métricas no formato de exposição do Prometheus
 
 Observabilidade:
   - métricas: prometheus_client em /metrics, coletadas por scrape do Prometheus
-  - traces:   spans HTTP automáticos (FastAPI) + span manual de inferência, via OTLP -> Tempo
+  - traces:   spans HTTP automáticos (FastAPI) + span manual de inferência,
+              via OTLP -> Tempo
   - logs:     logging estruturado do Python, via OTLP -> Loki
 """
 import time
@@ -21,8 +22,12 @@ from app.model_loader import ModelService
 from app.schemas import LaudoRequest, LaudoResponse
 
 app = FastAPI(
-    title="API de Triagem de Laudos Médicos",
-    description="Classifica laudos médicos em normal / atencao / urgente.",
+    title="API de Classificação de Condições Médicas",
+    description=(
+        "Classifica abstracts médicos em: cardiovascular diseases, "
+        "digestive system diseases, general pathological conditions, "
+        "neoplasms, nervous system diseases."
+    ),
     version="1.0.0",
 )
 

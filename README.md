@@ -1,4 +1,4 @@
-# Triagem Automática de Laudos Médicos
+# Classificação de Condições Médicas a partir de Abstracts
 
 Projeto do Tech Challenge Fase 3 (FIAP MLET). Um classificador de texto leve, servido por uma
 API REST em container, com pipeline CI/CD, orquestração de retreino, observabilidade completa e
@@ -7,7 +7,7 @@ otimização de latência.
 ```mermaid
 flowchart LR
     subgraph treino["Treino e otimização"]
-        CSV["data/laudos.csv<br/>2100 laudos"]
+        CSV["data/laudos.csv<br/>14.438 abstracts (Medical Abstracts TC Corpus)"]
         TRAIN["src/train.py<br/>TF-IDF + RandomForest"]
         EXPORT["src/export_onnx.py"]
         ONNX["models/model.onnx"]
@@ -65,17 +65,18 @@ flowchart LR
 
 ## 1. Visão geral
 
-Um hospital de referência recebe laudos e relatos de sintomas em texto livre e precisa priorizar
-o atendimento. O sistema classifica cada laudo em uma de três classes de urgência:
+O sistema classifica abstracts médicos em uma de cinco condições médicas, usando o dataset real **Medical Abstracts TC Corpus**:
 
-| Classe | Significado | Exemplo de laudo |
-|---|---|---|
-| `normal` | Sem necessidade de intervenção | "Hemograma completo dentro da normalidade, sem sinais de infecção." |
-| `atencao` | Requer acompanhamento | "Pressão arterial levemente elevada, recomendado acompanhamento." |
-| `urgente` | Requer atendimento imediato | "Paciente com febre alta e rigidez de nuca, suspeita de meningite." |
+| Classe | Significado |
+|---|---|
+| `cardiovascular diseases` | Doenças cardiovasculares |
+| `digestive system diseases` | Doenças do sistema digestivo |
+| `general pathological conditions` | Condições patológicas gerais |
+| `neoplasms` | Neoplasias |
+| `nervous system diseases` | Doenças do sistema nervoso |
 
-**Modelo:** TF-IDF (`max_features=3000`, n-gramas 1 a 2) seguido de `RandomForestClassifier`
-(200 árvores, `max_depth=20`), treinado com `scikit-learn` sobre 2100 laudos balanceados.
+**Modelo:** TF-IDF (`max_features=5000`, n-gramas 1 a 2) seguido de `RandomForestClassifier`
+(100 árvores, `max_depth=15`), treinado com `scikit-learn` sobre 14.438 abstracts reais.
 O classificador é exportado para ONNX e servido pelo ONNX Runtime, que é o backend padrão da API.
 
 **Stack:** FastAPI, ONNX Runtime, Docker Compose, Prometheus, Grafana, Tempo, Loki, Airflow e
@@ -215,20 +216,22 @@ Para popular os dashboards com tráfego realista:
 ```bash
 curl -s -X POST localhost:8000/predict \
   -H 'Content-Type: application/json' \
-  -d '{"texto": "Paciente com dor toracica intensa e falta de ar, suspeita de infarto agudo do miocardio."}'
+  -d '{"texto": "Patient presents with acute chest pain radiating to left arm, shortness of breath, and diaphoresis. ECG shows ST elevation in leads V1-V4. Troponin markedly elevated. Clinical picture consistent with acute anterior myocardial infarction."}'
 ```
 
 ```json
 {
-  "classificacao": "urgente",
-  "confianca": 0.9050000309944153,
+  "classificacao": "cardiovascular diseases",
+  "confianca": 0.875,
   "probabilidades": {
-    "atencao": 0.07999999821186066,
-    "normal": 0.014999999664723873,
-    "urgente": 0.9050000309944153
+    "cardiovascular diseases": 0.875,
+    "digestive system diseases": 0.025,
+    "general pathological conditions": 0.065,
+    "neoplasms": 0.020,
+    "nervous system diseases": 0.015
   },
   "modelo": "onnx",
-  "latencia_ms": 1.375
+  "latencia_ms": 1.42
 }
 ```
 
@@ -369,7 +372,7 @@ load_data  ->  train_model  ->  export_onnx  ->  validate_model
 
 | Task | O que faz |
 |---|---|
-| `load_data` | gera/carrega o CSV de treino em `data/laudos.csv` |
+| `load_data` | baixa e processa o Medical Abstracts TC Corpus em `data/laudos.csv` |
 | `train_model` | treina o pipeline TF-IDF + RandomForest e salva `models/model.joblib` |
 | `export_onnx` | converte o classificador para `models/model.onnx` |
 | `validate_model` | falha a DAG se qualquer um dos quatro artefatos não tiver sido gerado |
@@ -391,22 +394,22 @@ para a API.
 
 ## 9. Dataset
 
-`data/laudos.csv`: **2100 laudos**, perfeitamente balanceados em 700 por classe, gerados por
-`data/generate_data.py` com `random.seed(42)`.
+`data/laudos.csv`: **14.438 abstracts médicos reais** do **Medical Abstracts TC Corpus** (https://github.com/sebischair/Medical-Abstracts-TC-Corpus).
 
-**Por que sintético:** o projeto roda de ponta a ponta sem credencial de Kaggle e sem download
-externo, o que mantém o CI e a DAG do Airflow reprodutíveis em qualquer máquina. O gerador combina
-10 templates de laudo por classe com 7 sufixos de contexto (idade, sexo, encaminhamento,
-histórico).
+| Classe | Amostras |
+|---|---|
+| `general pathological conditions` | 4.805 |
+| `neoplasms` | 3.163 |
+| `cardiovascular diseases` | 3.051 |
+| `nervous system diseases` | 1.925 |
+| `digestive system diseases` | 1.494 |
+| **Total** | **14.438** |
 
-**Consequência que precisa ser dita:** o treino reporta f1 de 1.00 nas três classes. Isso mede o
-pipeline, não a capacidade de generalização, e é o resultado inevitável de dados construídos a
-partir de templates. Nenhuma conclusão clínica deve ser tirada desse número.
+**Origem:** O dataset é público, contém abstracts de artigos biomédicos rotulados com 5 condições médicas. O script `data/download_medical_abstracts.py` baixa os arquivos `medical_tc_train.csv` e `medical_tc_test.csv` do repositório oficial, combina train+test, mapeia os labels numéricos (1-5) para nomes legíveis, e salva como `data/laudos.csv` com colunas `texto` e `label`.
 
-**Como trocar por um dataset real:** basta substituir `data/laudos.csv` por um CSV com as mesmas
-duas colunas, `texto` e `label` (`normal` | `atencao` | `urgente`), e rodar `make model`. Nenhuma
-outra alteração é necessária. Candidatos: Medical Abstracts TC Corpus (Kaggle) ou recortes do
-MIMIC-III.
+**Nota sobre desbalanceamento:** A distribuição não é balanceada (a classe majoritária tem 3.2x mais amostras que a minoritária). O treino usa `class_weight="balanced"` no classificador para mitigar o viés.
+
+**Como trocar/atualizar:** Basta rodar `make model` que executa o script de download, treina e exporta para ONNX. Nenhuma outra alteração é necessária.
 
 ---
 
