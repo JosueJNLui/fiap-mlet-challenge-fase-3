@@ -142,7 +142,7 @@ pronto-socorro. Isso pede um serviço pequeno sempre de pé, não um cluster el�
 
 **Por que ECS Fargate:** a imagem Docker do serviço já existe e roda igual em qualquer lugar; o
 Fargate a executa sem nenhum servidor para provisionar, corrigir ou escalar manualmente. Os artefatos
-do modelo somam menos de 1.5 MB e carregam em memória no start, então uma task com 0.5 vCPU e 1 GB
+do modelo somam cerca de 9 MB e carregam em memória no start, então uma task com 0.5 vCPU e 1 GB
 atende com folga, e o autoscaling por número de requisições cobre os picos. O ALB entrega TLS, health check em `/health`
 e distribuição entre tasks sem código adicional.
 
@@ -269,16 +269,16 @@ um problema conhecido do onnxruntime. O TF-IDF continua em Python e apenas o Ran
 componente computacionalmente caro, vai para ONNX. A justificativa completa está em
 `src/export_onnx.py`.
 
-Medições em `docs/benchmark.txt` (macOS, Apple M5, Python 3.11, onnxruntime 1.19.2), reprodutíveis
-com `make bench`:
+Medições em `docs/benchmark.txt` (Linux, Ubuntu 24.04, Python 3.11, onnxruntime 1.19.2, scikit-learn
+1.5.2), medido em 2026-09-11, reprodutíveis com `make bench`:
 
 **Escopo 1: classificador isolado** (1 amostra, 500 execuções)
 
 | Backend | Latência média | Ganho |
 |---|---|---|
-| sklearn RandomForest, `n_jobs=1` | 1.3174 ms | baseline |
-| ONNX Runtime | 0.0065 ms | **204x mais rápido** |
-| sklearn RandomForest, `n_jobs=-1` | 13.3068 ms | 2058x (nota de rodapé) |
+| sklearn RandomForest, `n_jobs=1` | 3.9613 ms | baseline |
+| ONNX Runtime | 0.0606 ms | **65x mais rápido** |
+| sklearn RandomForest, `n_jobs=-1` | 22.7492 ms | 376x (nota de rodapé) |
 
 A baseline honesta é `n_jobs=1`. Com `n_jobs=-1`, que é a configuração real do treino, quase todo o
 tempo é despacho de threads do joblib e não trabalho do modelo, o que infla o ganho por um motivo
@@ -288,14 +288,14 @@ que não tem relação com a otimização.
 
 | Backend | Cliente média | p50 | p95 | Servidor média | Modelo média |
 |---|---|---|---|---|---|
-| sklearn | 14.1439 ms | 13.9757 ms | 15.3033 ms | 13.2080 ms | 12.7522 ms |
-| onnx | 2.4609 ms | 2.0334 ms | 4.1713 ms | 1.3065 ms | 0.1801 ms |
+| sklearn | 33.2259 ms | 28.9411 ms | 44.6106 ms | 29.6937 ms | 26.2552 ms |
+| onnx | 15.6711 ms | 12.5346 ms | 34.1369 ms | 8.3586 ms | 2.1027 ms |
 
-**Ganho end-to-end: 82.6%, ou 5.7x mais rápido.**
+**Ganho end-to-end: 52.8%, ou 2.1x mais rápido.**
 
-O ganho de 5.7x é menor que os 204x do classificador isolado, e isso é o resultado esperado: a
-otimização **move o gargalo**. Com sklearn o modelo consome 90.2% do tempo do cliente; com ONNX cai
-para 7.3%, e o que sobra é a camada HTTP mais o custo dos três sinais de observabilidade por
+O ganho de 2.1x é menor que os 65x do classificador isolado, e isso é o resultado esperado: a
+otimização **move o gargalo**. Com sklearn o modelo consome 79.0% do tempo do cliente; com ONNX cai
+para 13.4%, e o que sobra é a camada HTTP mais o custo dos três sinais de observabilidade por
 requisição.
 
 ---
@@ -408,7 +408,7 @@ com três jobs encadeados (`lint` -> `test` -> `build`):
 | Job | O que faz |
 |---|---|
 | **lint** | flake8 (Python), hadolint (Dockerfile), DCLint (os dois composes) e `ty` (validação estática de anotações de tipo) |
-| **test** | gera o dataset, treina o modelo e roda o pytest (10 testes) |
+| **test** | gera o dataset, treina o modelo e roda o pytest (21 testes) |
 | **build** | reconstrói os artefatos e gera a imagem Docker com tag `${{ github.sha }}`, sem publicar |
 
 O CI reaproveita os mesmos alvos do `Makefile` usados localmente (`make ci-install PY=python`,
@@ -463,7 +463,7 @@ para a API.
 
 **Origem:** O dataset é público, contém abstracts de artigos biomédicos rotulados com 5 condições médicas. O script `data/download_medical_abstracts.py` baixa os arquivos `medical_tc_train.csv` e `medical_tc_test.csv` do repositório oficial, combina train+test, mapeia os labels numéricos (1-5) para nomes legíveis, e salva como `data/laudos.csv` com colunas `texto` e `label`.
 
-**Nota sobre desbalanceamento:** A distribuição não é balanceada (a classe majoritária tem 3.2x mais amostras que a minoritária). O treino usa `class_weight="balanced"` no classificador para mitigar o viés.
+**Nota sobre desbalanceamento:** A distribuição não é balanceada (a classe majoritária tem 3.2x mais amostras que a minoritária).
 
 **Como trocar/atualizar:** Basta rodar `make model` que executa o script de download, treina e exporta para ONNX. Nenhuma outra alteração é necessária.
 
