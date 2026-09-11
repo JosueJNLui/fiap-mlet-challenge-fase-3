@@ -9,6 +9,27 @@
     "from": "now-15m",
     "to": "now"
   },
+  "templating": {
+    "list": [
+      {
+        "name": "operation",
+        "type": "custom",
+        "label": "Rota / Span name",
+        "current": { "text": "Todos", "value": ".*", "selected": true },
+        "options": [
+          { "text": "Todos", "value": ".*", "selected": true },
+          { "text": "/predict", "value": "/predict", "selected": false },
+          { "text": "/health", "value": "/health", "selected": false },
+          { "text": "predict", "value": "predict", "selected": false },
+          { "text": "model.* (fases)", "value": "model\\.", "selected": false }
+        ],
+        "query": ".*, /predict, /health, predict, model\\.",
+        "refresh": 0,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -30,7 +51,7 @@
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" } | rate()",
+          "query": "{ resource.service.name = \"triagem-api\" && (span.http.route =~ \"$operation\" || name =~ \"$operation\") } | rate()",
           "legendFormat": "traces/s"
         }
       ],
@@ -61,7 +82,7 @@
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" } | quantile_over_time(duration, 0.95)",
+          "query": "{ resource.service.name = \"triagem-api\" && (span.http.route =~ \"$operation\" || name =~ \"$operation\") } | quantile_over_time(duration, 0.95)",
           "legendFormat": "p95"
         }
       ],
@@ -92,7 +113,7 @@
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" } | quantile_over_time(duration, 0.50)",
+          "query": "{ resource.service.name = \"triagem-api\" && (span.http.route =~ \"$operation\" || name =~ \"$operation\") } | quantile_over_time(duration, 0.50)",
           "legendFormat": "p50"
         }
       ],
@@ -123,7 +144,7 @@
           "queryType": "traceql",
           "metricsQueryType": "range",
           "tableType": "traces",
-          "query": "{ resource.service.name = \"triagem-api\" && span.response.classificacao != nil } | rate() by (span.response.classificacao)",
+          "query": "{ resource.service.name = \"triagem-api\" && span.response.classificacao != nil && (span.http.route =~ \"$operation\" || name =~ \"$operation\") } | rate() by (span.response.classificacao)",
           "legendFormat": "{{span.response.classificacao}}"
         }
       ]
@@ -148,7 +169,7 @@
           "queryType": "traceql",
           "tableType": "traces",
           "limit": 20,
-          "query": "{ resource.service.name = \"triagem-api\" }"
+          "query": "{ resource.service.name = \"triagem-api\" && (span.http.route =~ \"$operation\" || name =~ \"$operation\") }"
         }
       ]
     }

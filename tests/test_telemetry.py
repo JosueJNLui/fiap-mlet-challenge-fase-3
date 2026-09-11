@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -25,3 +26,25 @@ def test_helpers_return_objects_in_disabled_mode():
     assert telemetry.get_tracer() is not None
     assert telemetry.get_logger() is not None
     telemetry.shutdown_telemetry()  # deve ser seguro na configuracao NoOp
+
+
+def test_loglevel_maps_env_to_logging_level(monkeypatch):
+    for value, expected in {
+        "error": logging.ERROR,
+        "warning": logging.WARNING,
+        "info": logging.INFO,
+        "INVALIDO": logging.INFO,  # desconhecido -> default info
+    }.items():
+        monkeypatch.setenv("LOG_LEVEL", value)
+        assert telemetry._loglevel() == expected
+
+
+def test_get_logger_respects_log_level(monkeypatch):
+    for value, expected in {
+        "error": logging.ERROR,
+        "warning": logging.WARNING,
+        "info": logging.INFO,
+    }.items():
+        monkeypatch.setenv("LOG_LEVEL", value)
+        logger = telemetry.get_logger("app.test_log_level")
+        assert logger.level == expected

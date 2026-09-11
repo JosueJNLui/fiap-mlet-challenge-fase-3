@@ -58,7 +58,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service_name=\"triagem-api\"} |= \"Predição realizada\"",
+          "expr": "{service_name=\"triagem-api\"} |~ \"(Predição realizada|Predição gerada no postprocess|Texto vetorizado|Inferência concluída|Confiança abaixo de 0.5)\"",
           "maxLines": 300
         }
       ],

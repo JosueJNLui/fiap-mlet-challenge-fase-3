@@ -15,9 +15,10 @@ Observabilidade:
 import time
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from opentelemetry import trace as otel_trace
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
-from app import telemetry
+from app import telemetry, tracing
 from app.model_loader import ModelService
 from app.schemas import LaudoRequest, LaudoResponse
 
@@ -88,6 +89,24 @@ async def metrics_middleware(request: Request, call_next):
 
     http_active_requests.inc()
     start = time.perf_counter()
+    span = otel_trace.get_current_span()
+    tracing.add_event(
+        "http.request",
+        attributes={
+            "http.method": request.method,
+            "http.path": endpoint,
+            "http.content_length": request.headers.get("content-length"),
+        },
+        span=span,
+    )
+    _logger.info(
+        "Requisição recebida",
+        extra={
+            "http.method": request.method,
+            "http.path": endpoint,
+            "http.content_length": request.headers.get("content-length"),
+        },
+    )
     try:
         response = await call_next(request)
     except Exception:
@@ -95,6 +114,16 @@ async def metrics_middleware(request: Request, call_next):
         http_requests_total.labels(
             method=request.method, endpoint=endpoint, status="500"
         ).inc()
+        tracing.add_event(
+            "http.request.unhandled_error",
+            level="error",
+            attributes={"http.path": endpoint},
+            span=span,
+        )
+        _logger.exception(
+            "Erro não tratado na requisição",
+            extra={"http.method": request.method, "http.path": endpoint},
+        )
         raise
     finally:
         http_active_requests.dec()
@@ -107,6 +136,36 @@ async def metrics_middleware(request: Request, call_next):
     ).inc()
     if response.status_code >= 400:
         http_errors_total.labels(endpoint=endpoint).inc()
+        tracing.add_event(
+            "http.request.client_error",
+            level="warning",
+            attributes={"http.path": endpoint, "http.status_code": response.status_code},
+            span=span,
+        )
+        _logger.warning(
+            "Requisição finalizada com erro de cliente",
+            extra={"http.path": endpoint, "http.status_code": response.status_code},
+        )
+    else:
+        duration_ms = round((time.perf_counter() - start) * 1000, 4)
+        tracing.add_event(
+            "http.request.done",
+            attributes={
+                "http.path": endpoint,
+                "http.status_code": response.status_code,
+                "http.duration_ms": duration_ms,
+            },
+            span=span,
+        )
+        _logger.info(
+            "Requisição concluída",
+            extra={
+                "http.method": request.method,
+                "http.path": endpoint,
+                "http.status_code": response.status_code,
+                "http.duration_ms": duration_ms,
+            },
+        )
     return response
 
 
@@ -122,12 +181,39 @@ def health():
 
 @app.post("/predict", response_model=LaudoResponse)
 def predict(payload: LaudoRequest):
-    if not payload.texto.strip():
-        _logger.warning("Predição rejeitada: texto vazio.")
-        raise HTTPException(status_code=400, detail="Campo 'texto' não pode ser vazio.")
-
     with _tracer.start_as_current_span("predict") as span:
-        result = model_service.predict(payload.texto)
+        texto = payload.texto.strip()
+        span.set_attribute("input.texto_chars", len(texto))
+        span.set_attribute("model.backend", model_service.backend)
+        preview = tracing.text_preview(texto)
+        if preview is not None:
+            span.set_attribute("input.texto", preview)
+
+        if not texto:
+            span.set_status(otel_trace.StatusCode.ERROR, description="texto vazio")
+            tracing.add_event(
+                "predict.validation_error",
+                level="warning",
+                attributes={"reason": "texto_vazio", "input.texto_chars": 0},
+                span=span,
+            )
+            _logger.warning(
+                "Predição rejeitada: texto vazio.",
+                extra={"reason": "texto_vazio", "input.texto_chars": 0},
+            )
+            raise HTTPException(status_code=400, detail="Campo 'texto' não pode ser vazio.")
+
+        tracing.add_event(
+            "predict.validation_ok",
+            attributes={"input.texto_chars": len(texto)},
+            span=span,
+        )
+        _logger.info(
+            "Payload validado",
+            extra={"input.texto_chars": len(texto), "model.backend": model_service.backend},
+        )
+
+        result = model_service.predict(texto)
         classe = result["classificacao"]
         latency_ms = result["latencia_ms"]
 
@@ -136,12 +222,37 @@ def predict(payload: LaudoRequest):
         span.set_attribute("modelo", result["modelo"])
         span.set_attribute("latencia_ms", latency_ms)
 
+        if result["confianca"] < 0.5:
+            tracing.add_event(
+                "predict.low_confidence",
+                level="warning",
+                attributes={
+                    "classe": classe,
+                    "confianca": result["confianca"],
+                },
+                span=span,
+            )
+            _logger.warning(
+                "Confiança abaixo de 0.5",
+                extra={"classe": classe, "confianca": result["confianca"]},
+            )
+
         predictions_total.labels(classe=classe).inc()
         prediction_duration.labels(backend=result["modelo"], classe=classe).observe(
             latency_ms / 1000.0
         )
         prediction_confidence.labels(classe=classe).observe(result["confianca"])
 
+        tracing.add_event(
+            "predict.completed",
+            attributes={
+                "classe": classe,
+                "confianca": result["confianca"],
+                "modelo": result["modelo"],
+                "latencia_ms": latency_ms,
+            },
+            span=span,
+        )
         _logger.info(
             "Predição realizada",
             extra={
