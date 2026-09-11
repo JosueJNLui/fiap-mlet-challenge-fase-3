@@ -9,7 +9,7 @@ DCLINT = docker run --rm -v $(CURDIR):/app -w /app zavoloklom/dclint:latest-alpi
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose lint-ty test check bench build up down airflow-up airflow-down clean
+.PHONY: help setup ci-install model lint lint-python lint-docker lint-compose lint-ty test check bench populate build up down airflow-up airflow-down clean
 
 help:  ## mostra esta ajuda (alvos disponíveis)
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
@@ -53,6 +53,10 @@ check: lint test  ## o mesmo que o CI roda antes do build
 bench:  ## latência do classificador (sklearn vs ONNX) e da API HTTP (precisa de `make up`)
 	$(PY) src/benchmark.py --n 500
 	$(PY) src/benchmark_http.py --n 200
+
+N ?= 300
+populate:  ## popula os dashboards com abstracts reais das 5 classes (precisa de `make up`); use N=1000 para mais tráfego
+	$(PY) scripts/populate_dashboards.py --n $(N)
 
 build:  ## gera a imagem Docker sem publicar
 	docker build -f docker/Dockerfile -t triagem-laudos-api:$(IMAGE_TAG) .
