@@ -18,7 +18,24 @@ import json
 import time
 import urllib.request
 
-TEXTO = "Paciente com dor torácica intensa e falta de ar súbita"
+# Abstract real de "cardiovascular diseases" do data/laudos.csv, com tamanho próximo da
+# mediana do corpus (1.161 caracteres; mediana 1.210). O TF-IDF foi treinado em inglês:
+# texto em português vira um vetor todo zero e a medição deixa de representar uma entrada real.
+# Também é usado por src/benchmark.py.
+SAMPLE_TEXT = (
+    "Multivariate analysis in the prediction of death in hospital after acute myocardial infarction. "
+    "Prognostic factors in patients with acute myocardial infarction based on clinical and investigative "
+    "data on admission were evaluated prospectively in 111 consecutive patients. Seventeen patients "
+    "(15.3%) died during hospital stay. Age, a previous infarct, high Killip class, cardiomegaly, high "
+    "serum concentrations of cardiac enzymes, a low ejection fraction, and a high wall motion score index "
+    "correlated significantly with in-hospital mortality; whereas sex, risk factors, and pericardial "
+    "effusion did not. Multivariate analysis showed that age and the wall motion score index were the "
+    "best predictors of death in hospital. Wall motion detected by cross sectional echocardiography may "
+    "reflect the extent of myocardial involvement. Age and wall motion score index predicted in-hospital "
+    "mortality with a sensitivity of 76.5%, a specificity of 91.5%, and a predictive accuracy of 89.2%. "
+    "Age and the wall motion score index can be determined on admission and are useful for identifying "
+    "patients at high risk of cardiac death who might benefit from early intervention. "
+)
 
 
 def post_predict(url: str, texto: str) -> dict:
@@ -60,7 +77,7 @@ def main():
     with urllib.request.urlopen(f"{args.url}/health", timeout=10) as resp:
         backend = json.load(resp)["modelo"]
 
-    post_predict(f"{args.url}/predict", TEXTO)  # warmup
+    post_predict(f"{args.url}/predict", SAMPLE_TEXT)  # warmup
 
     # o histograma é acumulado desde o start do container: só o delta do laço
     # descreve este benchmark, senão as requisições frias do warm-up entram na média
@@ -69,7 +86,7 @@ def main():
     client_ms, model_ms = [], []
     for _ in range(args.n):
         start = time.perf_counter()
-        body = post_predict(f"{args.url}/predict", TEXTO)
+        body = post_predict(f"{args.url}/predict", SAMPLE_TEXT)
         client_ms.append((time.perf_counter() - start) * 1000)
         model_ms.append(body["latencia_ms"])
 

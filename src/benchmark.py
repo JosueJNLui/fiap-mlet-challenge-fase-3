@@ -17,11 +17,7 @@ import joblib
 import numpy as np
 import onnxruntime as rt
 
-SAMPLE_TEXTS = [
-    "Paciente apresenta dor torácica intensa e falta de ar súbita.",
-    "Exame de sangue dentro dos parâmetros normais, sem alterações significativas.",
-    "Queixa de dor abdominal leve a moderada, sem sinais de alarme.",
-]
+from benchmark_http import SAMPLE_TEXT
 
 
 def bench_sklearn(clf, X, n_runs):
@@ -54,7 +50,9 @@ def main():
     pipeline = joblib.load(args.model)
     session = rt.InferenceSession(args.onnx, providers=["CPUExecutionProvider"])
 
-    X = pipeline.named_steps["tfidf"].transform(SAMPLE_TEXTS).toarray()
+    X = pipeline.named_steps["tfidf"].transform([SAMPLE_TEXT]).toarray()
+    # vetor todo zero (texto fora do vocabulário) mediria um caminho que nenhuma entrada real percorre
+    assert X.any(), "SAMPLE_TEXT não tem nenhum termo do vocabulário TF-IDF"
     clf = pipeline.named_steps["clf"]
 
     # Duas baselines sklearn: como o modelo foi treinado (n_jobs=-1) e com o
