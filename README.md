@@ -1,8 +1,17 @@
-# Classificação de Condições Médicas a partir de Abstracts
+# Triagem de Laudos por Especialidade
 
-Projeto do Tech Challenge Fase 3 (FIAP MLET). Um classificador de texto leve, servido por uma
-API REST em container, com pipeline CI/CD, orquestração de retreino, observabilidade completa e
-otimização de latência.
+Projeto do Tech Challenge Fase 3 (FIAP MLET). Um hospital de referência recebe laudos e textos
+clínicos o dia inteiro e precisa encaminhar cada um para a fila da especialidade certa
+(cardiologia, gastroenterologia, clínica geral, oncologia ou neurologia) assim que ele chega. Um
+classificador de texto leve faz esse roteamento, servido por uma API REST em container, com
+pipeline CI/CD, orquestração de retreino, observabilidade completa e otimização de latência.
+
+**Por que especialidade e não urgência:** o enunciado aceita "classificação/urgência" como target e
+sugere nominalmente o **Medical Abstracts TC Corpus**, que é rotulado por condição médica, e não por
+grau de urgência. Derivar urgência a partir da condição seria medicamente arbitrário, então o
+projeto usa o rótulo real do corpus e trata a triagem como **roteamento por especialidade**. Todo o
+restante do enunciado (API real-time, CI/CD, Airflow, monitoramento e otimização de latência)
+se aplica sem mudança.
 
 ```mermaid
 flowchart LR
@@ -12,6 +21,7 @@ flowchart LR
         EXPORT["src/export_onnx.py"]
         ONNX["models/model.onnx"]
     end
+    MLFLOW["MLflow / DagsHub<br/>tracking + Model Registry"]
     subgraph servico["Serviço"]
         API["FastAPI em Docker<br/>POST /predict via ONNX Runtime"]
     end
@@ -25,6 +35,7 @@ flowchart LR
     CI["GitHub Actions<br/>lint / test / build"]
 
     CSV --> TRAIN --> EXPORT --> ONNX --> API
+    TRAIN -->|parâmetros, métricas, modelo| MLFLOW
     API -->|scrape /metrics| PROM
     API -->|OTLP traces| TEMPO
     API -->|OTLP logs| LOKI
@@ -54,33 +65,37 @@ flowchart LR
 
 | Critério | Peso | Onde está |
 |---|---|---|
-| Modelagem e Otimização | 20% | [seção 5](#5-otimização-de-latência), `src/train.py`, `src/export_onnx.py`, `docs/benchmark.txt` |
+| Modelagem e Otimização | 20% | [seção 5](#5-otimização-de-latência) (latência), [seção 9](#9-dataset-e-qualidade-do-modelo) (qualidade), `src/train.py`, `src/export_onnx.py`, `docs/benchmark.txt` |
 | CI/CD (GitHub Actions) | 15% | [seção 7](#7-cicd-github-actions), `.github/workflows/ci.yml` |
-| Orquestração (Airflow) | 15% | [seção 8](#8-orquestração-de-retreino-airflow), `airflow/dags/triage_training_dag.py`, `docs/airflow_dag.png` |
+| Orquestração (Airflow) | 15% | [seção 8](#8-orquestração-de-retreino-airflow), `airflow/dags/triage_training_dag.py`, `docs/airflow_dag.png`; registro das versões em [seção 11](#11-mlflow--dagshub-model-registry) |
 | Monitoramento | 20% | [seção 6](#6-observabilidade), `docker/docker-compose.yml`, `docker/grafana/dashboards/` |
 | Documentação (README) | 15% | [seção 2](#2-arquitetura-de-deploy-em-nuvem) (decisão de nuvem) e [seção 3](#3-como-executar) (execução) |
-| Vídeo STAR | 15% | [seção 11](#11-vídeo-star) |
+| Vídeo STAR | 15% | [seção 12](#12-vídeo-star) |
 
 ---
 
 ## 1. Visão geral
 
-O sistema classifica abstracts médicos em uma de cinco condições médicas, usando o dataset real **Medical Abstracts TC Corpus**:
+O sistema recebe o texto de um laudo (em inglês, como o corpus de treino) e devolve a condição
+médica predominante, que define a fila de destino. As classes são as cinco do **Medical Abstracts
+TC Corpus**:
 
-| Classe | Significado |
-|---|---|
-| `cardiovascular diseases` | Doenças cardiovasculares |
-| `digestive system diseases` | Doenças do sistema digestivo |
-| `general pathological conditions` | Condições patológicas gerais |
-| `neoplasms` | Neoplasias |
-| `nervous system diseases` | Doenças do sistema nervoso |
+| Classe | Significado | Fila de destino |
+|---|---|---|
+| `cardiovascular diseases` | Doenças cardiovasculares | Cardiologia |
+| `digestive system diseases` | Doenças do sistema digestivo | Gastroenterologia |
+| `general pathological conditions` | Condições patológicas gerais | Clínica geral |
+| `neoplasms` | Neoplasias | Oncologia |
+| `nervous system diseases` | Doenças do sistema nervoso | Neurologia |
 
 **Modelo:** TF-IDF (`max_features=5000`, n-gramas 1 a 2) seguido de `RandomForestClassifier`
-(100 árvores, `max_depth=15`), treinado com `scikit-learn` sobre 14.438 abstracts reais.
-O classificador é exportado para ONNX e servido pelo ONNX Runtime, que é o backend padrão da API.
+(100 árvores, sem limite de profundidade, `min_samples_leaf=10`, `class_weight="balanced"`),
+treinado com `scikit-learn` sobre 14.438 abstracts reais (accuracy e f1_macro de 0.59, ver
+[seção 9](#9-dataset-e-qualidade-do-modelo)). O classificador é exportado para ONNX e servido pelo
+ONNX Runtime, que é o backend padrão da API.
 
-**Stack:** FastAPI, ONNX Runtime, Docker Compose, Prometheus, Grafana, Tempo, Loki, Airflow e
-GitHub Actions.
+**Stack:** FastAPI, ONNX Runtime, Docker Compose, Prometheus, Grafana, Tempo, Loki, Airflow,
+MLflow com DagsHub (tracking e Model Registry) e GitHub Actions.
 
 ---
 
@@ -88,14 +103,16 @@ GitHub Actions.
 
 ### Batch ou real-time?
 
-A triagem existe para decidir a ordem de atendimento **enquanto o paciente está no hospital**.
-Um lote noturno entregaria a classificação depois que a decisão já foi tomada, o que anula o
-propósito do sistema. O requisito é, portanto, **inferência real-time (síncrona)**: uma chamada
-HTTP por laudo, com resposta em poucos milissegundos.
+A triagem existe para colocar cada laudo **na fila da especialidade certa no momento em que ele é
+emitido**, para que o especialista comece a análise sem depender de uma leitura manual de
+roteamento. Um lote noturno deixaria os laudos do dia parados sem destino até a manhã seguinte,
+justamente o atraso que o sistema deveria eliminar. O requisito é, portanto, **inferência
+real-time (síncrona)**: o sistema hospitalar faz uma chamada HTTP por laudo e recebe a
+especialidade em poucos milissegundos.
 
 O volume ajuda a fechar a decisão: um hospital de referência gera dezenas a centenas de laudos por
-hora, não milhões. É carga baixa e contínua, com picos previsíveis nos horários de pico do
-pronto-socorro. Isso pede um serviço pequeno sempre de pé, não um cluster elástico.
+hora, não milhões. É carga baixa e contínua, com picos previsíveis nos horários de maior movimento.
+Isso pede um serviço pequeno sempre de pé, não um cluster elástico.
 
 ### Recomendação: AWS ECS Fargate + Application Load Balancer
 
@@ -142,7 +159,8 @@ pronto-socorro. Isso pede um serviço pequeno sempre de pé, não um cluster el�
 
 **Por que ECS Fargate:** a imagem Docker do serviço já existe e roda igual em qualquer lugar; o
 Fargate a executa sem nenhum servidor para provisionar, corrigir ou escalar manualmente. Os artefatos
-do modelo somam cerca de 9 MB e carregam em memória no start, então uma task com 0.5 vCPU e 1 GB
+do modelo carregados pelo backend ONNX (`model.onnx` e `tfidf_vectorizer.joblib`) somam cerca de
+5 MB e carregam em memória no start, então uma task com 0.5 vCPU e 1 GB
 atende com folga, e o autoscaling por número de requisições cobre os picos. O ALB entrega TLS, health check em `/health`
 e distribuição entre tasks sem código adicional.
 
@@ -151,7 +169,7 @@ e distribuição entre tasks sem código adicional.
 - **AWS Lambda:** cold start com `onnxruntime` e `scikit-learn` no pacote custa centenas de
   milissegundos, o que anula o ganho de latência que este projeto foi otimizar.
 - **SageMaker Endpoint:** custo e complexidade operacional desproporcionais para um RandomForest de
-  200 árvores; faz sentido para modelos grandes com GPU, não para este.
+  100 árvores; faz sentido para modelos grandes com GPU, não para este.
 - **EKS:** o overhead de operar um cluster Kubernetes não se paga para um único serviço stateless.
 - **Batch (S3 + AWS Batch / Glue):** descartado pelo requisito de negócio, conforme acima.
 
@@ -176,7 +194,7 @@ Pré-requisitos: Docker (com o daemon rodando, usado inclusive pelos lints), `uv
 
 ```bash
 make setup    # cria o .venv com Python 3.11 e instala todas as dependências
-make model    # gera o dataset sintético, treina e exporta para ONNX
+make model    # baixa o dataset (exige internet), treina e exporta para ONNX
 make check    # lint (flake8 + hadolint + DCLint + ty) e pytest, o mesmo que o CI roda
 make up       # sobe a stack completa: API + Prometheus + Grafana + Tempo + Loki
 ```
@@ -201,11 +219,15 @@ make down         # derruba a stack de observabilidade
 make help         # lista todos os alvos
 ```
 
-Para popular os dashboards com tráfego realista:
+Para popular os dashboards com tráfego realista (abstracts reais das 5 classes, exige a stack de pé):
 
 ```bash
-.venv/bin/python scripts/populate_dashboards.py --n 300
+make populate          # 300 predições
+make populate N=1000   # mais tráfego
 ```
+
+O script também envia de propósito payloads inválidos (cerca de 1 a cada 6 predições) para que os
+painéis de erro tenham dado.
 
 ---
 
@@ -219,23 +241,27 @@ curl -s -X POST localhost:8000/predict \
   -d '{"texto": "Patient presents with acute chest pain radiating to left arm, shortness of breath, and diaphoresis. ECG shows ST elevation in leads V1-V4. Troponin markedly elevated. Clinical picture consistent with acute anterior myocardial infarction."}'
 ```
 
+Resposta literal da stack local (2026-09-13, modelo em `models/`, formatada para leitura):
+
 ```json
 {
   "classificacao": "cardiovascular diseases",
-  "confianca": 0.875,
+  "confianca": 0.5870566368103027,
   "probabilidades": {
-    "cardiovascular diseases": 0.875,
-    "digestive system diseases": 0.025,
-    "general pathological conditions": 0.065,
-    "neoplasms": 0.020,
-    "nervous system diseases": 0.015
+    "cardiovascular diseases": 0.5870566368103027,
+    "digestive system diseases": 0.03426913917064667,
+    "general pathological conditions": 0.19747069478034973,
+    "neoplasms": 0.028771232813596725,
+    "nervous system diseases": 0.15243232250213623
   },
   "modelo": "onnx",
-  "latencia_ms": 1.42
+  "latencia_ms": 1.4042
 }
 ```
 
-O campo `latencia_ms` mede apenas TF-IDF mais classificador, sem o custo de HTTP.
+O laudo vai para a fila de cardiologia. O campo `latencia_ms` mede apenas TF-IDF mais
+classificador, sem o custo de HTTP, e varia entre chamadas; as probabilidades são determinísticas
+para o mesmo modelo.
 
 ### `GET /health`
 
@@ -269,33 +295,40 @@ um problema conhecido do onnxruntime. O TF-IDF continua em Python e apenas o Ran
 componente computacionalmente caro, vai para ONNX. A justificativa completa está em
 `src/export_onnx.py`.
 
-Medições em `docs/benchmark.txt` (Linux, Ubuntu 24.04, Python 3.11, onnxruntime 1.19.2, scikit-learn
-1.5.2), medido em 2026-09-11, reprodutíveis com `make bench`:
+Medições em `docs/benchmark.txt`, feitas em 2026-09-13 com o modelo final, reprodutíveis com
+`make bench`. Ambiente: macOS 26.5.1 (Apple M5, 10 núcleos, 16 GB), Python 3.11, onnxruntime
+1.19.2, scikit-learn 1.5.2; no escopo 2 a API roda em Docker Desktop 29.5.3. A entrada é um abstract
+real de `cardiovascular diseases` do corpus, com 1.161 caracteres (mediana do corpus: 1.210),
+definido em `SAMPLE_TEXT` (`src/benchmark_http.py`).
 
 **Escopo 1: classificador isolado** (1 amostra, 500 execuções)
 
 | Backend | Latência média | Ganho |
 |---|---|---|
-| sklearn RandomForest, `n_jobs=1` | 3.9613 ms | baseline |
-| ONNX Runtime | 0.0606 ms | **65x mais rápido** |
-| sklearn RandomForest, `n_jobs=-1` | 22.7492 ms | 376x (nota de rodapé) |
+| sklearn RandomForest, `n_jobs=1` | 0.7310 ms | baseline |
+| ONNX Runtime | 0.0068 ms | **108x mais rápido** |
+| sklearn RandomForest, `n_jobs=-1` | 14.1200 ms | 2086x (nota de rodapé) |
 
 A baseline honesta é `n_jobs=1`. Com `n_jobs=-1`, que é a configuração real do treino, quase todo o
 tempo é despacho de threads do joblib e não trabalho do modelo, o que infla o ganho por um motivo
 que não tem relação com a otimização.
 
-**Escopo 2: HTTP end-to-end**, API em Docker (200 requisições)
+**Escopo 2: HTTP end-to-end**, API em Docker (200 requisições por backend)
 
 | Backend | Cliente média | p50 | p95 | Servidor média | Modelo média |
 |---|---|---|---|---|---|
-| sklearn | 33.2259 ms | 28.9411 ms | 44.6106 ms | 29.6937 ms | 26.2552 ms |
-| onnx | 15.6711 ms | 12.5346 ms | 34.1369 ms | 8.3586 ms | 2.1027 ms |
+| sklearn | 15.3124 ms | 14.8150 ms | 16.7580 ms | 14.1169 ms | 13.4832 ms |
+| onnx | 3.9566 ms | 3.6053 ms | 5.8487 ms | 2.5528 ms | 0.5459 ms |
 
-**Ganho end-to-end: 52.8%, ou 2.1x mais rápido.**
+"Servidor" vem do histograma de `/metrics` e "Modelo" do campo `latencia_ms` (TF-IDF mais
+classificador). O backend sklearn da API carrega o `model.joblib` como foi treinado, com
+`n_jobs=-1`, por isso o modelo leva 13.5 ms na API contra 0.73 ms do `n_jobs=1` isolado.
 
-O ganho de 2.1x é menor que os 65x do classificador isolado, e isso é o resultado esperado: a
-otimização **move o gargalo**. Com sklearn o modelo consome 79.0% do tempo do cliente; com ONNX cai
-para 13.4%, e o que sobra é a camada HTTP mais o custo dos três sinais de observabilidade por
+**Ganho end-to-end: 74.2%, ou 3.9x mais rápido** (24.7x no campo `latencia_ms`).
+
+O ganho de 3.9x é menor que os 108x do classificador isolado, e isso é o resultado esperado: a
+otimização **move o gargalo**. Com sklearn o modelo consome 88.1% do tempo do cliente; com ONNX cai
+para 13.8%, e o que sobra é a camada HTTP mais o custo dos três sinais de observabilidade por
 requisição.
 
 ---
@@ -326,12 +359,19 @@ São 3 dashboards provisionados automaticamente, 19 painéis no total.
 ### Métricas da API (10 painéis)
 
 Total de requisições por status, latência p50/p95/p99, QPS por endpoint, taxa de erro, requisições
-em andamento, predições por classe, latência de inferência, confiança das predições e total de
-predições.
+em andamento, predições por especialidade, latência de inferência, confiança das predições, total de
+predições e um painel de navegação entre sinais.
 
 ![Dashboard de métricas](docs/dashboard_metricas.png)
 
+Os prints foram capturados em 2026-09-13 após duas rodadas de `make populate` com 1000 predições
+cada. A "Taxa de Erro (%)" entre 6% e 14% vem dos payloads inválidos **enviados de propósito** pelo
+script (400 e 422, cerca de 1 a cada 6 predições), e não de falhas da API.
+
 ### Traces (5 painéis)
+
+Traces por segundo, latência dos traces p95 e p50, requisições por especialidade e traces recentes,
+com filtro pela variável `$operation`.
 
 ![Dashboard de traces](docs/dashboard_traces.png)
 
@@ -393,6 +433,8 @@ lido em `src/app/telemetry.py`.
 
 ### Logs (4 painéis)
 
+Volume de logs por nível, logs de warning e erro, predições por especialidade e logs de predição.
+
 ![Dashboard de logs](docs/dashboard_logs.png)
 
 Os dashboards são provisionados por `docker/grafana/provisioning/`, então sobem prontos com o
@@ -408,7 +450,7 @@ com três jobs encadeados (`lint` -> `test` -> `build`):
 | Job | O que faz |
 |---|---|
 | **lint** | flake8 (Python), hadolint (Dockerfile), DCLint (os dois composes) e `ty` (validação estática de anotações de tipo) |
-| **test** | gera o dataset, treina o modelo e roda o pytest (21 testes) |
+| **test** | baixa o dataset, treina o modelo (MLflow em fallback local, sem token) e roda o pytest (22 testes) |
 | **build** | reconstrói os artefatos e gera a imagem Docker com tag `${{ github.sha }}`, sem publicar |
 
 O CI reaproveita os mesmos alvos do `Makefile` usados localmente (`make ci-install PY=python`,
@@ -451,9 +493,11 @@ entre versões fica no Model Registry do MLflow (seção 11).
 
 ---
 
-## 9. Dataset
+## 9. Dataset e qualidade do modelo
 
-`data/laudos.csv`: **14.438 abstracts médicos reais** do **Medical Abstracts TC Corpus** (https://github.com/sebischair/Medical-Abstracts-TC-Corpus).
+`data/laudos.csv`: **14.438 abstracts médicos reais** do **Medical Abstracts TC Corpus** (https://github.com/sebischair/Medical-Abstracts-TC-Corpus),
+o dataset sugerido no enunciado. Os abstracts fazem o papel dos laudos, e a condição rotulada define
+a especialidade de destino (tabela da [seção 1](#1-visão-geral)).
 
 | Classe | Amostras |
 |---|---|
@@ -469,6 +513,37 @@ entre versões fica no Model Registry do MLflow (seção 11).
 **Nota sobre desbalanceamento:** A distribuição não é balanceada (a classe majoritária tem 3.2x mais amostras que a minoritária).
 
 **Como trocar/atualizar:** Basta rodar `make model` que executa o script de download, treina e exporta para ONNX. Nenhuma outra alteração é necessária.
+
+### Qualidade do modelo
+
+Avaliação no split 80/20 estratificado (`random_state=42`: 11.550 abstracts de treino e 2.888 de
+teste), impressa pelo `src/train.py` (accuracy e f1_macro também são registrados no MLflow):
+
+| Classe | precision | recall | f1 | suporte |
+|---|---|---|---|---|
+| `cardiovascular diseases` | 0.65 | 0.81 | 0.72 | 610 |
+| `digestive system diseases` | 0.47 | 0.68 | 0.56 | 299 |
+| `general pathological conditions` | 0.60 | 0.27 | 0.38 | 961 |
+| `neoplasms` | 0.68 | 0.80 | 0.74 | 633 |
+| `nervous system diseases` | 0.47 | 0.62 | 0.54 | 385 |
+| **accuracy / f1_macro / f1_weighted** | | | **0.59 / 0.59 / 0.57** | 2.888 |
+
+A configuração saiu de uma varredura curta, mantendo o TF-IDF e o RandomForest (compatíveis com o
+export ONNX). A versão anterior (`max_depth=15`, sem pesos) tinha accuracy 0.49 e f1_macro 0.35,
+com f1 perto de zero em `digestive system diseases` e `nervous system diseases`. O ganho veio de dois
+ajustes:
+
+- **`class_weight="balanced"`**: sem pesos, o modelo quase nunca previa as duas classes menores.
+- **`min_samples_leaf=10` sem limite de profundidade**: folhas maiores regularizam. Árvores sem
+  nenhum limite decoram o treino, pioram o teste (f1_macro 0.45) e geram um ONNX de 40 MB; com
+  `min_samples_leaf=10` o `model.onnx` tem 4.8 MB. A latência do ONNX ficou igual em todas as
+  variações testadas.
+
+`general pathological conditions` fica com f1 0.38 (recall 0.27) por construção do corpus: é a
+classe "guarda-chuva", com abstracts sobre condições que também aparecem nas outras quatro. Com
+pesos balanceados, o modelo prefere a especialidade concreta quando há sinal dela, o que no
+roteamento significa mandar menos laudos para a clínica geral quando existe uma especialidade
+provável. Sklearn e ONNX devolvem as mesmas probabilidades (diferença da ordem de 1e-9).
 
 ---
 
@@ -494,7 +569,7 @@ entre versões fica no Model Registry do MLflow (seção 11).
 ├── models/                           artefatos: .joblib, .onnx, vectorizer, classes.json
 ├── scripts/populate_dashboards.py    gerador de tráfego para popular os painéis
 ├── src/
-│   ├── app/                          API FastAPI: main, model_loader, schemas, telemetry
+│   ├── app/                          API FastAPI: main, model_loader, schemas, telemetry, tracing
 │   ├── triage/
 │   │   ├── config.py                 configuração central (Pydantic Settings + YAML)
 │   │   └── tracking.py               integração MLflow/DagsHub (tracking + registry)
@@ -502,9 +577,9 @@ entre versões fica no Model Registry do MLflow (seção 11).
 │   ├── export_onnx.py                conversão do classificador para ONNX
 │   ├── benchmark.py                  latência do classificador isolado
 │   └── benchmark_http.py             latência HTTP end-to-end
-├── tests/                            pytest: API, artefatos, métricas, telemetria
+├── tests/                            pytest: API, artefatos, métricas, telemetria, tracing, MLflow
 ├── Makefile                          todos os atalhos (make help)
-├── .env.example                      exemplo de variáveis de ambiente (DagsHub token)
+├── .env.example                      credenciais DagsHub e variáveis de tracing e log da API
 └── requirements*.txt                 dependências (a da API é enxuta, sem treino)
 ```
 
@@ -523,8 +598,10 @@ O pipeline integra **MLflow** para experiment tracking e **DagsHub** como backen
 - **Com credenciais DagsHub** (`DAGSHUB_TOKEN` no `.env`): tracking remoto em
   `https://dagshub.com/JosueJNLui/fiap-mlet-challenge-fase-3.mlflow`, modelos registrados
   no Model Registry com aliases `staging`/`production`, promoção automática baseada em `f1_macro`.
-- **Sem credenciais** (CI, desenvolvimento local): fallback para SQLite local
-  (`/tmp/mlflow_local/mlflow.db`), registra modelo localmente, **não promove** para production.
+- **Sem credenciais** (CI, desenvolvimento local): fallback para SQLite local em
+  `mlflow_local/mlflow.db` dentro do diretório temporário do sistema (`tempfile.gettempdir()`:
+  `/tmp` no Linux, no CI e no container do Airflow; `/var/folders/.../T` no macOS). Não persiste,
+  registra o modelo localmente e **não promove** para production.
 - **DagsHub recusa a run** (ex.: 403 de token sem permissão de escrita no repositório): o
   `src/train.py` avisa no log e cai no mesmo fallback local, sem quebrar `make model` nem a DAG.
 
@@ -544,11 +621,16 @@ cp .env.example .env
 
 ### Promoção manual (se necessário)
 
+O segundo argumento é o `f1_macro` da versão mais recente do modelo registrado (o valor logado na
+run do MLflow; 0.59 no modelo atual). A função marca essa versão como `staging` e só move
+`production` para ela se esse valor superar o `f1_macro` da produção atual (ou se ainda não houver
+produção).
+
 ```bash
 # Com token configurado
 PYTHONPATH=src .venv/bin/python -c "
 from triage.tracking import promote_to_production
-promote_to_production('MedicalAbstractsClassifier', 0.35, 'f1_macro')
+promote_to_production('MedicalAbstractsClassifier', 0.59, 'f1_macro')
 "
 ```
 
@@ -558,6 +640,7 @@ promote_to_production('MedicalAbstractsClassifier', 0.35, 'f1_macro')
 
 Link: _a preencher_
 
-Roteiro (formato STAR, até 5 minutos): a situação da triagem manual, a tarefa de colocar o modelo
-em produção, as ações demonstradas ao vivo (API, dashboards, CI verde, DAG e a tabela de latência)
-e o resultado medido.
+Roteiro (formato STAR, até 5 minutos): a situação do hospital que precisa encaminhar cada laudo
+para a fila da especialidade certa assim que ele chega, a tarefa de colocar o classificador em
+produção, as ações demonstradas ao vivo (API, dashboards, CI verde, DAG e a tabela de latência) e o
+resultado medido.
