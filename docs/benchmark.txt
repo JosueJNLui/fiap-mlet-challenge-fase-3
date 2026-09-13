@@ -1,16 +1,16 @@
 Ambiente: Linux (Ubuntu 24.04), Python 3.11, onnxruntime 1.19.2, scikit-learn 1.5.2
-Medido em: 2026-09-09, contra o código atual da API (três sinais por requisição:
+Medido em: 2026-09-11, contra o código atual da API (três sinais por requisição:
            métricas via prometheus_client, traces e logs via OTLP)
 
 === Escopo 1: classificador isolado (1 amostra, 500 execuções) ===
 Comando: .venv/bin/python src/benchmark.py --n 500
 
-Sklearn RandomForest, n_jobs=-1 :  16.1464 ms
-Sklearn RandomForest, n_jobs=1  :   2.5032 ms
-ONNX Runtime (otimizado)        :   0.0474 ms
+Sklearn RandomForest, n_jobs=-1 :  22.7492 ms
+Sklearn RandomForest, n_jobs=1  :   3.9613 ms
+ONNX Runtime (otimizado)        :   0.0606 ms
 
-Melhoria vs n_jobs=-1 :  99.7%  (340x mais rápido)
-Melhoria vs n_jobs=1  :  98.1%  (53x mais rápido)
+Melhoria vs n_jobs=-1 :  99.7%  (376x mais rápido)
+Melhoria vs n_jobs=1  :  98.5%  (65x mais rápido)
 
 Notas:
 - O estágio de TF-IDF é idêntico nos dois casos e ficou de fora, para
@@ -19,9 +19,26 @@ Notas:
   inferência unitária ela é a pior das duas, porque o overhead de
   despacho do joblib domina o tempo. n_jobs=1 é a baseline mais justa
   para medir o ganho do ONNX Runtime em si.
-- O ganho (53x vs n_jobs=1) é menor que o relatado anteriormente (204x)
-  devido a diferenças de ambiente (Linux vs macOS, CPU diferente) e ao
-  modelo ter 5 classes vs 3 classes (árvores maiores).
 
-=== Escopo 2: HTTP end-to-end, API em Docker (Etapa 1) ===
-Pendente - requer `make up` para subir a stack completa.
+=== Escopo 2: HTTP end-to-end (200 requisições por backend) ===
+Comando: .venv/bin/python src/benchmark_http.py --n 200
+         (onnx = stack do `make up`; sklearn = container temporário com
+          MODEL_BACKEND=sklearn na mesma imagem)
+
+Backend sklearn:
+Cliente  média :  33.2259 ms
+Cliente  p50   :  28.9411 ms
+Cliente  p95   :  44.6106 ms
+Servidor média :  29.6937 ms  (histograma /metrics)
+Modelo   média :  26.2552 ms  (campo latencia_ms)
+
+Backend onnx:
+Cliente  média :  15.6711 ms
+Cliente  p50   :  12.5346 ms
+Cliente  p95   :  34.1369 ms
+Servidor média :   8.3586 ms  (histograma /metrics)
+Modelo   média :   2.1027 ms  (campo latencia_ms)
+
+Ganho end-to-end (cliente média): 52.8% mais rápido (2.1x).
+Participação do modelo no tempo do cliente: 79.0% (sklearn) -> 13.4% (onnx);
+o resto é a camada HTTP mais o custo dos três sinais de observabilidade.
