@@ -12,10 +12,10 @@ services:
       # Libera a UI sem login (só faz sentido em localhost, ver o arquivo).
       - ./airflow_webserver_config.py:/opt/airflow/webserver_config.py:ro
       # A DAG executa os scripts de src/ com sys.executable e resolve os caminhos
-      # a partir de PROJECT_ROOT=/opt/airflow/project.
+      # a partir de PROJECT_ROOT=/opt/airflow/project. O `.env` (credenciais DagsHub,
+      # opcional) chega por este mesmo mount; um bind mount só do `.env` criaria um
+      # diretório no host quando o arquivo não existe.
       - ..:/opt/airflow/project
-      # Credenciais DagsHub (para MLflow tracking remoto)
-      - ../.env:/opt/airflow/project/.env:ro
     environment:
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       # A imagem do Airflow não traz as dependências de ML; instaladas no start.
