@@ -42,7 +42,7 @@ def download_csv(url: str) -> pd.DataFrame:
     print(f"Baixando {url}...")
     response = requests.get(url, timeout=60)
     response.raise_for_status()
-    
+
     # Parse CSV content
     from io import StringIO
     df = pd.read_csv(StringIO(response.text))
@@ -51,48 +51,48 @@ def download_csv(url: str) -> pd.DataFrame:
 
 def main():
     print("=== Baixando Medical Abstracts TC Corpus ===")
-    
+
     # Baixar treino e teste
     train_df = download_csv(TRAIN_URL)
     test_df = download_csv(TEST_URL)
-    
+
     print(f"Treino: {len(train_df)} amostras")
     print(f"Teste: {len(test_df)} amostras")
-    
+
     # Unificar
     df = pd.concat([train_df, test_df], ignore_index=True)
     print(f"Total: {len(df)} amostras")
-    
+
     # Verificar colunas esperadas
     expected_cols = {"condition_label", "medical_abstract"}
     if not expected_cols.issubset(df.columns):
         print(f"ERRO: Colunas esperadas {expected_cols}, encontradas {set(df.columns)}")
         sys.exit(1)
-    
+
     # Mapear labels numéricos para nomes
     df["label"] = df["condition_label"].map(LABEL_MAP)  # type: ignore[arg-type]
-    
+
     # Verificar se todos foram mapeados
     if df["label"].isna().any():  # type: ignore[attr-defined]
         print("ERRO: Alguns labels não foram mapeados")
         missing = df.loc[df["label"].isna(), "condition_label"].unique()  # type: ignore[attr-defined]
         print(missing)
         sys.exit(1)
-    
+
     # Renomear coluna de texto
     df = df.rename(columns={"medical_abstract": "texto"})
-    
+
     # Selecionar apenas as colunas necessárias
     df = df[["texto", "label"]]
-    
+
     # Remover nulos
     df = df.dropna(subset=["texto", "label"])  # type: ignore[arg-type]
-    
+
     # Estatísticas por classe
     print("\nDistribuição por classe:")
     for label, count in df["label"].value_counts().items():
         print(f"  {label}: {count}")
-    
+
     # Salvar
     OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_CSV, index=False, quoting=csv.QUOTE_ALL, lineterminator="\n")
