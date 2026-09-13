@@ -89,7 +89,7 @@
     },
     {
       "id": 6,
-      "title": "Predições por Classe de Urgência",
+      "title": "Predições por Especialidade",
       "type": "piechart",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },

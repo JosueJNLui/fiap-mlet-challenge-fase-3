@@ -126,7 +126,7 @@
     },
     {
       "id": 4,
-      "title": "Requisições por Classe de Urgência",
+      "title": "Requisições por Especialidade",
       "type": "timeseries",
       "datasource": {
         "type": "tempo",
