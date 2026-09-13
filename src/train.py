@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
 from triage.config import load_settings
-from triage.tracking import init_mlflow, log_classifier, promote_to_production
+from triage.tracking import init_mlflow, log_classifier, promote_to_production, start_run
 
 
 def build_pipeline(cfg) -> Pipeline:
@@ -84,7 +84,7 @@ def main():
     print(f"MLflow tracking: {tracking_uri}")
 
     start = time.time()
-    with mlflow.start_run():
+    with start_run(settings):
         pipeline.fit(X_train, y_train)
         train_time = time.time() - start
 

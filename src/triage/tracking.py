@@ -13,6 +13,7 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 from mlflow.models import infer_signature
 from sklearn.pipeline import Pipeline
 
@@ -63,6 +64,24 @@ def init_mlflow(settings: Settings | None = None) -> str:
     mlflow.set_tracking_uri(local_uri)
     mlflow.set_experiment(settings.mlflow.experiment_name)
     return local_uri
+
+
+def start_run(settings: Settings) -> mlflow.ActiveRun:
+    """Abre a run no tracking configurado por ``init_mlflow``.
+
+    Se o DagsHub recusar a criação (ex.: 403 de token sem permissão de escrita no
+    repositório), descarta o token e refaz a run no fallback local, para que o treino
+    não quebre por causa de credencial.
+    """
+    try:
+        return mlflow.start_run()
+    except MlflowException as exc:
+        if not settings.dagshub_token:
+            raise
+        print(f"DagsHub recusou a criação da run ({exc}). Usando MLflow local.")
+        settings.dagshub_token = None
+        print(f"MLflow tracking: {init_mlflow(settings)}")
+        return mlflow.start_run()
 
 
 def log_classifier(pipeline: Pipeline, example: pd.DataFrame, registered_model_name: str) -> None:
