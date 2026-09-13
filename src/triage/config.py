@@ -20,10 +20,8 @@ from pydantic_settings import (
 
 
 class Paths(BaseModel):
-    """Diretórios de dados e artefatos."""
+    """Diretório de artefatos."""
 
-    raw: Path = Path("data/raw")
-    processed: Path = Path("data/processed")
     models: Path = Path("models")
 
 
@@ -63,7 +61,7 @@ class Settings(BaseSettings):
     train: TrainCfg = Field(default_factory=TrainCfg)
     mlflow: MlflowCfg = Field(default_factory=MlflowCfg)
 
-    # Ambiente/secret — sem default no YAML, vêm do .env
+    # Ambiente/secret: sem default no YAML, vêm do .env
     dagshub_repo_owner: str = "JosueJNLui"
     dagshub_repo_name: str = "fiap-mlet-challenge-fase-3"
     dagshub_user: str | None = None
