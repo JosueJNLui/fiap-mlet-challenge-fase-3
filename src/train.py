@@ -36,6 +36,8 @@ def build_pipeline(cfg) -> Pipeline:
                 RandomForestClassifier(
                     n_estimators=cfg.rf_n_estimators,
                     max_depth=cfg.rf_max_depth,
+                    min_samples_leaf=cfg.rf_min_samples_leaf,
+                    class_weight=cfg.rf_class_weight,
                     random_state=cfg.rf_random_state,
                     n_jobs=-1
                 ),
@@ -98,6 +100,8 @@ def main():
         mlflow.log_param("tfidf_ngram_range", cfg.tfidf_ngram_range)
         mlflow.log_param("rf_n_estimators", cfg.rf_n_estimators)
         mlflow.log_param("rf_max_depth", cfg.rf_max_depth)
+        mlflow.log_param("rf_min_samples_leaf", cfg.rf_min_samples_leaf)
+        mlflow.log_param("rf_class_weight", cfg.rf_class_weight)
         mlflow.log_param("test_size", cfg.test_size)
         mlflow.log_param("random_state", cfg.random_state)
         mlflow.log_param("n_samples_train", len(X_train))

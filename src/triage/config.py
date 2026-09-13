@@ -33,7 +33,9 @@ class TrainCfg(BaseModel):
     tfidf_max_features: int = 5000
     tfidf_ngram_range: tuple[int, int] = (1, 2)
     rf_n_estimators: int = 100
-    rf_max_depth: int = 15
+    rf_max_depth: int | None = None
+    rf_min_samples_leaf: int = 10
+    rf_class_weight: str | None = "balanced"
     rf_random_state: int = 42
     test_size: float = 0.2
     random_state: int = 42
