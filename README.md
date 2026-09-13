@@ -439,12 +439,15 @@ make airflow-up   # http://localhost:8080, UI sem login
 
 O compose (`docker/docker-compose.airflow.yml`) sobe o Airflow em modo `standalone` e monta o
 repositório em `/opt/airflow/project`, então os artefatos gerados pelas tasks aparecem direto em
-`models/` no host. As quatro tasks concluem em cerca de 6 segundos:
+`models/` no host. A `load_data` baixa o corpus do GitHub, então a DAG precisa de acesso à internet.
+Sem `.env` (ou com um token DagsHub recusado) o treino registra no MLflow local. As quatro tasks
+concluem em cerca de 13 segundos:
 
 ![DAG do Airflow](docs/airflow_dag.png)
 
-O `validate_model` é o portão de qualidade do pipeline: sem os quatro artefatos, nada é liberado
-para a API.
+O `validate_model` confere os artefatos antes de liberar o modelo: sem os quatro arquivos, a DAG
+falha e nada é entregue para a API. Ele não aplica limite de métrica; a comparação de qualidade
+entre versões fica no Model Registry do MLflow (seção 11).
 
 ---
 
@@ -522,6 +525,8 @@ O pipeline integra **MLflow** para experiment tracking e **DagsHub** como backen
   no Model Registry com aliases `staging`/`production`, promoção automática baseada em `f1_macro`.
 - **Sem credenciais** (CI, desenvolvimento local): fallback para SQLite local
   (`/tmp/mlflow_local/mlflow.db`), registra modelo localmente, **não promove** para production.
+- **DagsHub recusa a run** (ex.: 403 de token sem permissão de escrita no repositório): o
+  `src/train.py` avisa no log e cai no mesmo fallback local, sem quebrar `make model` nem a DAG.
 
 ### Configuração
 
