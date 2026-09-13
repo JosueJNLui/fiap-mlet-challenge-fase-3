@@ -119,7 +119,7 @@ def main():
     if status_code not in HEALTH_OK:
         print(f"API não respondeu /health (HTTP {status_code}). Ela está de pé?")
         raise SystemExit(1)
-    print(f"API detectada em {args.url} — enviando {args.n} predições...\n")
+    print(f"API detectada em {args.url}, enviando {args.n} predições...\n")
 
     counts: dict[str, int] = {}
     erros_esperados = max(1, args.n // 12)  # ~8% de validações (400/422)

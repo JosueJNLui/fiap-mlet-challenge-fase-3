@@ -1,7 +1,7 @@
 """Integração com MLflow no DagsHub (tracking + registro de modelos).
 
 O pipeline tenta usar DagsHub; se credenciais não estiverem disponíveis, faz fallback
-para tracking local (arquivo SQLite) para não quebrar o CI/DVC.
+para tracking local (arquivo SQLite) para não quebrar o CI.
 """
 
 from __future__ import annotations

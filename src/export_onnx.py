@@ -6,9 +6,9 @@ Decisão de design: o estágio de TF-IDF permanece em Python/scikit-learn e
 SOMENTE o classificador é exportado para ONNX. O operador ONNX de
 normalização de texto (StringNormalizer), usado ao converter o TfidfVectorizer
 inteiro, depende de locale do sistema operacional (en_US.UTF-8) e costuma
-falhar em imagens Docker mínimas — um problema comum e conhecido do
+falhar em imagens Docker mínimas, um problema comum e conhecido do
 onnxruntime. Exportar apenas o classificador é mais robusto e ainda captura
-o principal ganho de performance, já que a árvore de decisão é o componente
+o principal ganho de performance, já que a floresta de árvores é o componente
 computacionalmente mais custoso na inferência.
 
 Uso:
