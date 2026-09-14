@@ -9,3 +9,15 @@
 # `docker/airflow_webserver_config.py` é lido pelo webserver dentro do container
 # do Airflow, que tem `flask_appbuilder`; o venv local não tem.
 exclude = ["airflow", "docker/airflow_webserver_config.py"]
+
+[tool.pytest.ini_options]
+# O starlette 0.38.x (fixado pelo fastapi==0.115.0) usa `anyio.abc.BlockingPortal`,
+# alias depreciado no anyio >= 4.15. O aviso é interno da biblioteca; some ao
+# atualizar o fastapi para uma versão com starlette mais recente.
+#
+# O mlflow declara `PromptModelConfig.model_name`, que conflita com o namespace
+# protegido `model_` do pydantic 2.x fixado pelo fastapi; aviso interno ao importar o mlflow.
+filterwarnings = [
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+    "ignore:Field \"model_name\" in PromptModelConfig has conflict with protected namespace:UserWarning",
+]

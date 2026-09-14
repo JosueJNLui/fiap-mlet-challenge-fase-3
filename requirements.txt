@@ -1,23 +1,24 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-scikit-learn==1.5.2
+# Ambiente de desenvolvimento e CI (`make setup` / `make ci-install`).
+# A imagem da API instala só requirements-api.txt.
+-r requirements-api.txt
+
+# treino, export ONNX e dataset
 pandas==2.2.2
-joblib==1.4.2
-pydantic==2.9.2
 pydantic-settings==2.5.2
 pyyaml>=6.0
-prometheus-client==0.21.0
 skl2onnx==1.20.0
 onnx==1.22.0
-onnxruntime==1.19.2
-numpy==1.26.4
+requests>=2.31
+mlflow>=3.14.0
+dagshub>=0.7.0
 
 # testes
 pytest==8.3.3
 httpx==0.27.2
 
-# análise estática de anotações de tipo (usado em `make lint-ty`)
+# lint e análise estática de anotações de tipo
+flake8==7.3.0
 ty==0.0.75
 
-# orquestração (usado apenas no ambiente Airflow, ver docker/docker-compose.airflow.yml)
-apache-airflow==2.10.2
+# O Airflow não entra aqui: vem da imagem apache/airflow, com as dependências de ML
+# listadas em docker/docker-compose.airflow.yml.

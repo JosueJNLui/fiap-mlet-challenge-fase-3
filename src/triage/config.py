@@ -20,10 +20,8 @@ from pydantic_settings import (
 
 
 class Paths(BaseModel):
-    """Diretórios de dados e artefatos."""
+    """Diretório de artefatos."""
 
-    raw: Path = Path("data/raw")
-    processed: Path = Path("data/processed")
     models: Path = Path("models")
 
 
@@ -33,7 +31,9 @@ class TrainCfg(BaseModel):
     tfidf_max_features: int = 5000
     tfidf_ngram_range: tuple[int, int] = (1, 2)
     rf_n_estimators: int = 100
-    rf_max_depth: int = 15
+    rf_max_depth: int | None = None
+    rf_min_samples_leaf: int = 10
+    rf_class_weight: str | None = "balanced"
     rf_random_state: int = 42
     test_size: float = 0.2
     random_state: int = 42
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     train: TrainCfg = Field(default_factory=TrainCfg)
     mlflow: MlflowCfg = Field(default_factory=MlflowCfg)
 
-    # Ambiente/secret — sem default no YAML, vêm do .env
+    # Ambiente/secret: sem default no YAML, vêm do .env
     dagshub_repo_owner: str = "JosueJNLui"
     dagshub_repo_name: str = "fiap-mlet-challenge-fase-3"
     dagshub_user: str | None = None

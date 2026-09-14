@@ -37,7 +37,7 @@
     },
     {
       "id": 3,
-      "title": "Predições por Classe de Urgência",
+      "title": "Predições por Especialidade",
       "type": "timeseries",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },

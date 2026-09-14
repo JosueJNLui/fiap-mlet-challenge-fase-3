@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    name: Lint (flake8, hadolint, DCLint)
+    name: Lint (flake8, hadolint, DCLint, ty)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: make ci-install PY=python
 
-      - name: Gerar dataset sintético e treinar modelo (necessário para testes)
+      - name: Baixar dataset e treinar modelo (necessário para testes)
         run: make model PY=python
 
       - name: Rodar testes
