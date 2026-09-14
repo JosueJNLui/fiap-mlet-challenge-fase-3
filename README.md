@@ -52,7 +52,7 @@ flowchart LR
 
 | O quê | Onde |
 |---|---|
-| Vídeo STAR (até 5 min) | _a preencher_ |
+| Vídeo STAR (até 5 min) | https://www.youtube.com/watch?v=rE5LJOkbW9E |
 | Documentação interativa da API | http://localhost:8000/docs (após `make up`) |
 | Dashboards do Grafana | http://localhost:3000 (após `make up`) |
 | Airflow | http://localhost:8080 (após `make airflow-up`) |
@@ -638,7 +638,7 @@ promote_to_production('MedicalAbstractsClassifier', 0.59, 'f1_macro')
 
 ## 12. Vídeo STAR
 
-Link: _a preencher_
+Link: [https://www.youtube.com/watch?v=rE5LJOkbW9E](https://www.youtube.com/watch?v=rE5LJOkbW9E)
 
 Roteiro (formato STAR, até 5 minutos): a situação do hospital que precisa encaminhar cada laudo
 para a fila da especialidade certa assim que ele chega, a tarefa de colocar o classificador em
